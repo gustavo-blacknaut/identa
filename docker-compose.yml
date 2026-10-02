@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "127.0.0.1:${GREEN_OCR_PORT:-8090}:8000"
+    volumes:
+      - ./data:/app/data
+      - ./storage:/app/storage
+    restart: unless-stopped
+
+  tests:
+    build: .
+    profiles: ["tests"]
+    environment:
+      GREEN_OCR_ENCRYPTION_KEY: ""
+    command: ["sh", "-c", "ruff check . && pytest"]
