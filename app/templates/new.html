@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Novo documento · Green OCR{% endblock %}
+{% block content %}
+<section class="card">
+  <h2>Novo documento</h2>
+  {% if error %}<p class="alert alert-error">{{ error }}</p>{% endif %}
+  <form id="upload-form" method="post" action="/documentos" enctype="multipart/form-data">
+    <label class="field">
+      <span>Tipo de documento</span>
+      <select name="doc_type" required>
+        {% for parser in parsers %}
+        <option value="{{ parser.doc_type }}">{{ parser.display_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="sides">
+      {% for side, label, required in (("front", "Frente", true), ("back", "Verso", false)) %}
+      <label class="dropzone" data-preview>
+        <input type="file" name="{{ side }}" accept="image/*" capture="environment" {% if required %}required{% endif %}>
+        <img alt="" hidden>
+        <span class="dropzone-text"><strong>{{ label }}</strong><br>Tire uma foto ou escolha um arquivo</span>
+      </label>
+      {% endfor %}
+    </div>
+
+    <p class="hint">Dica: fotografe o documento inteiro sobre uma superfície escura, sem reflexo e sem cortar as bordas. O original é guardado criptografado; o processamento é feito numa cópia.</p>
+
+    <button class="button" type="submit">Extrair dados</button>
+    <p class="processing" hidden>Processando… o primeiro envio pode levar mais tempo enquanto o motor de OCR é carregado.</p>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Painel · Green OCR{% endblock %}
+{% block content %}
+<section class="stats">
+  <div class="stat"><span class="stat-value">{{ stats.documents }}</span><span class="stat-label">Documentos</span></div>
+  <div class="stat"><span class="stat-value">{{ stats.pending }}</span><span class="stat-label">Aguardando revisão</span></div>
+  <div class="stat"><span class="stat-value">{{ stats.people }}</span><span class="stat-label">Pessoas</span></div>
+</section>
+
+<section class="card">
+  <h2>Documentos processados</h2>
+  {% if documents %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Tipo</th><th>Nome</th><th>CPF</th><th>Confiança</th><th>Status</th><th>Processado em</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for document in documents %}
+        <tr>
+          <td><span class="tag">{{ document.doc_type | upper }}</span></td>
+          <td>{{ document.full_name or "—" }}</td>
+          <td class="mono">{{ document.cpf or "—" }}</td>
+          <td>
+            {% if document.ocr_confidence_avg is not none %}
+            <span class="confidence confidence-{{ confidence_level(document.ocr_confidence_avg) }}">{{ "%.0f" | format(document.ocr_confidence_avg * 100) }}%</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if document.status == "reviewed" %}<span class="status status-ok">Revisado</span>
+            {% else %}<span class="status status-pending">Pendente</span>{% endif %}
+          </td>
+          <td>{{ document.processed_at.strftime("%d/%m/%Y %H:%M") }}</td>
+          <td><a href="/documentos/{{ document.id }}">Abrir</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">Nenhum documento ainda. <a href="/novo">Envie o primeiro</a>.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Pessoas</h2>
+  {% if people %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Nome</th><th>CPF</th><th>Nascimento</th><th>Documentos</th><th></th></tr></thead>
+      <tbody>
+        {% for person in people %}
+        <tr>
+          <td>{{ person.full_name or "—" }}</td>
+          <td class="mono">{{ person.cpf or "—" }}</td>
+          <td>{{ person.birth_date.strftime("%d/%m/%Y") if person.birth_date else "—" }}</td>
+          <td>{{ person.documents | length }}</td>
+          <td>
+            <form method="post" action="/pessoas/{{ person.id }}/excluir" data-confirm="Apagar esta pessoa e todos os documentos e imagens dela?">
+              <button class="link danger" type="submit">Apagar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">As pessoas aparecem aqui depois que um documento é revisado e salvo.</p>
+  {% endif %}
+</section>
+{% endblock %}

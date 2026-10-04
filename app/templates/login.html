@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Entrar · Green OCR{% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+<section class="card login">
+  <h2>Entrar</h2>
+  {% if error %}<p class="alert alert-error">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <label class="field">
+      <span>Usuário</span>
+      <input name="username" autocomplete="username" autocapitalize="none" required autofocus>
+    </label>
+    <label class="field">
+      <span>Senha</span>
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="button" type="submit">Entrar</button>
+  </form>
+</section>
+{% endblock %}

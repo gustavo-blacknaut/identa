@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}{{ parser.display_name }} · Green OCR{% endblock %}
+{% block content %}
+<section class="card">
+  <div class="card-header">
+    <h2>{{ parser.display_name }}</h2>
+    {% if document.status == "reviewed" %}<span class="status status-ok">Revisado{% if document.reviewed_manually %} · corrigido manualmente{% endif %}</span>
+    {% else %}<span class="status status-pending">Aguardando revisão</span>{% endif %}
+  </div>
+  {% if saved %}<p class="alert alert-ok">Dados salvos.</p>{% endif %}
+
+  <div class="review">
+    <div class="images">
+      {% for image in document.images %}
+      <figure>
+        <a href="/imagens/{{ image.id }}/processada" target="_blank" rel="noopener">
+          <img src="/imagens/{{ image.id }}/miniatura" alt="{{ 'Frente' if image.side == 'front' else 'Verso' }} do documento">
+        </a>
+        <figcaption>
+          {{ "Frente" if image.side == "front" else "Verso" }} ·
+          <a href="/imagens/{{ image.id }}/original" target="_blank" rel="noopener">original</a>
+        </figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+
+    <form class="fields" method="post" action="/documentos/{{ document.id }}">
+      <div class="legend">
+        <span class="confidence confidence-high">alta</span>
+        <span class="confidence confidence-medium">média</span>
+        <span class="confidence confidence-low">baixa</span>
+        <span class="confidence confidence-unknown">não encontrado</span>
+      </div>
+      {% for definition in parser.field_definitions %}
+      {% set level = confidence_level(confidence.get(definition.name)) if values.get(definition.name) else "unknown" %}
+      {% set field_issues = issues.get(definition.name, []) %}
+      <label class="field field-{{ level }}{% if field_issues %} field-invalid{% endif %}">
+        <span>
+          {{ definition.label }}
+          {% if confidence.get(definition.name) is not none and values.get(definition.name) %}
+          <small class="confidence confidence-{{ level }}">{{ "%.0f" | format(confidence[definition.name] * 100) }}%</small>
+          {% endif %}
+        </span>
+        {% if definition.kind == "multiline" %}
+        <textarea name="{{ definition.name }}" rows="3" class="mono">{{ values.get(definition.name, "") }}</textarea>
+        {% else %}
+        <input name="{{ definition.name }}" value="{{ values.get(definition.name, '') }}"
+               {% if definition.kind == "date" %}placeholder="dd/mm/aaaa" inputmode="numeric"{% endif %}
+               {% if definition.kind == "cpf" %}placeholder="000.000.000-00" inputmode="numeric" class="mono"{% endif %}>
+        {% endif %}
+        {% for message in field_issues %}<em class="issue">{{ message }}</em>{% endfor %}
+      </label>
+      {% endfor %}
+      <div class="actions">
+        <button class="button" type="submit">Confirmar e salvar</button>
+      </div>
+    </form>
+  </div>
+
+  <details class="raw">
+    <summary>Texto bruto reconhecido · motor {{ document.ocr_engine }}
+      {% if document.ocr_confidence_avg is not none %}· confiança média {{ "%.0f" | format(document.ocr_confidence_avg * 100) }}%{% endif %}
+    </summary>
+    <pre>{{ document.raw_text or "" }}</pre>
+  </details>
+
+  <div class="document-actions">
+    <form method="post" action="/documentos/{{ document.id }}/reprocessar" data-processing>
+      <button class="button" type="submit">Reprocessar OCR</button>
+      <span class="processing" hidden>Processando…</span>
+    </form>
+    <form method="post" action="/documentos/{{ document.id }}/excluir" data-confirm="Apagar este documento e as imagens dele?">
+      <button class="link danger" type="submit">Apagar documento</button>
+    </form>
+  </div>
+</section>
+{% endblock %}
