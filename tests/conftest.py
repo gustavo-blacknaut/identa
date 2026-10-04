@@ -18,6 +18,7 @@ class FakeEngine:
 
 
 USERNAME = "operador"
+CSRF_HEADERS = {"X-Requested-With": "green-ocr"}
 PASSWORD = "senha-de-teste-123"
 
 
@@ -28,6 +29,7 @@ def client(tmp_path):
         storage_dir=tmp_path / "storage",
         encryption_key=generate_key(),
         secret_key=generate_key(),
+        frontend_dir=tmp_path / "frontend",
     )
     application = create_app(settings)
     config = Config("alembic.ini")
@@ -36,12 +38,12 @@ def client(tmp_path):
     with application.state.session_factory() as session:
         create_user(session, USERNAME, PASSWORD)
     application.state.ocr_engine = FakeEngine()
-    with TestClient(application) as test_client:
+    with TestClient(application, headers=CSRF_HEADERS) as test_client:
         test_client.app_state = application.state
         yield test_client
 
 
 def login(client):
-    response = client.post("/login", data={"username": USERNAME, "password": PASSWORD}, follow_redirects=False)
-    assert response.status_code == 303
+    response = client.post("/api/auth/login", json={"username": USERNAME, "password": PASSWORD})
+    assert response.status_code == 200
     return response

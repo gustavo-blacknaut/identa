@@ -1,11 +1,11 @@
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.auth.routes import PUBLIC_PATHS
+from app.auth.routes import PUBLIC_API_PATHS
 from app.auth.routes import router as auth_router
 from app.auth.throttle import LoginThrottle
 from app.config import Settings, get_settings
@@ -14,13 +14,30 @@ from app.security.crypto import FileCipher
 from app.storage.encrypted_store import EncryptedFileStore
 from app.web.routes import router
 
-STATIC_DIR = Path(__file__).resolve().parent / "static"
 SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 MINIMUM_SECRET_LENGTH = 32
+CSRF_HEADER = "x-requested-with"
+CSRF_HEADER_VALUE = "green-ocr"
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
 class MissingSecretKeyError(ValueError):
     pass
+
+
+def mount_frontend(application: FastAPI, frontend_dir: Path) -> None:
+    index = frontend_dir / "index.html"
+    if not index.exists():
+        return
+    if (frontend_dir / "assets").exists():
+        application.mount("/assets", StaticFiles(directory=frontend_dir / "assets"), name="assets")
+
+    @application.get("/{path:path}", include_in_schema=False)
+    def spa(path: str) -> FileResponse:
+        candidate = (frontend_dir / path).resolve()
+        if path and candidate.is_file() and candidate.is_relative_to(frontend_dir.resolve()):
+            return FileResponse(candidate)
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -33,17 +50,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.session_factory = build_session_factory(build_engine(settings.database_url))
     application.state.store = EncryptedFileStore(settings.storage_dir, cipher)
     application.state.login_throttle = LoginThrottle()
-    application.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     application.include_router(auth_router)
     application.include_router(router)
 
+    @application.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    mount_frontend(application, settings.frontend_dir)
+
     @application.middleware("http")
-    async def require_login(request: Request, call_next):
-        is_public = request.url.path.startswith(PUBLIC_PATHS)
-        if not is_public and not request.session.get("user_id"):
-            if request.method == "GET":
-                return RedirectResponse("/login", status_code=303)
-            return JSONResponse({"detail": "Não autenticado"}, status_code=401)
+    async def protect_api(request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/api/"):
+            if request.method not in SAFE_METHODS and request.headers.get(CSRF_HEADER) != CSRF_HEADER_VALUE:
+                return JSONResponse({"detail": "Requisição recusada"}, status_code=403)
+            if not path.startswith(PUBLIC_API_PATHS) and not request.session.get("user_id"):
+                return JSONResponse({"detail": "Não autenticado"}, status_code=401)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -58,9 +81,4 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         same_site="strict",
         https_only=False,
     )
-
-    @application.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
-
     return application

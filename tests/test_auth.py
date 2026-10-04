@@ -22,43 +22,53 @@ def test_throttle_blocks_after_limit():
     assert not throttle.is_blocked("ip:user")
 
 
+@pytest.mark.parametrize("path", ["/api/overview", "/api/people", "/api/documents/1", "/api/images/1/original"])
+def test_api_requires_login(client, path):
+    assert client.get(path).status_code == 401
+
+
 @pytest.mark.parametrize(
     ("method", "path"),
-    [("get", "/"), ("get", "/novo"), ("get", "/documentos/1"), ("get", "/imagens/1/original")],
+    [
+        ("post", "/api/documents"),
+        ("delete", "/api/documents/1"),
+        ("delete", "/api/people/1"),
+        ("post", "/api/documents/1/reprocess"),
+    ],
 )
-def test_pages_redirect_to_login_when_anonymous(client, method, path):
-    response = getattr(client, method)(path, follow_redirects=False)
-    assert response.status_code == 303
-    assert response.headers["location"] == "/login"
+def test_mutations_are_rejected_when_anonymous(client, method, path):
+    assert getattr(client, method)(path).status_code == 401
 
 
-@pytest.mark.parametrize("path", ["/documentos", "/documentos/1/excluir", "/pessoas/1/excluir", "/documentos/1/reprocessar"])
-def test_mutations_are_rejected_when_anonymous(client, path):
-    assert client.post(path).status_code == 401
+def test_mutations_without_csrf_header_are_refused(client):
+    login(client)
+    response = client.delete("/api/documents/1", headers={"X-Requested-With": ""})
+    assert response.status_code == 403
 
 
 def test_wrong_password_is_rejected(client):
-    response = client.post("/login", data={"username": USERNAME, "password": "senha-errada"})
+    response = client.post("/api/auth/login", json={"username": USERNAME, "password": "senha-errada"})
     assert response.status_code == 401
-    assert "inválidos" in response.text
+    assert "inválidos" in response.json()["detail"]
 
 
-def test_login_and_logout(client):
+def test_login_me_and_logout(client):
+    assert client.get("/api/auth/me").status_code == 401
     login(client)
-    assert client.get("/", follow_redirects=False).status_code == 200
-    client.post("/logout")
-    assert client.get("/", follow_redirects=False).status_code == 303
+    assert client.get("/api/auth/me").json()["username"] == USERNAME
+    assert client.get("/api/overview").status_code == 200
+    client.post("/api/auth/logout")
+    assert client.get("/api/overview").status_code == 401
 
 
 def test_login_is_throttled(client):
     for _ in range(5):
-        client.post("/login", data={"username": USERNAME, "password": "senha-errada"})
-    response = client.post("/login", data={"username": USERNAME, "password": PASSWORD})
+        client.post("/api/auth/login", json={"username": USERNAME, "password": "senha-errada"})
+    response = client.post("/api/auth/login", json={"username": USERNAME, "password": PASSWORD})
     assert response.status_code == 429
 
 
 def test_session_cookie_is_strict_and_http_only(client):
-    response = login(client)
-    cookie = response.headers["set-cookie"].lower()
+    cookie = login(client).headers["set-cookie"].lower()
     assert "httponly" in cookie
     assert "samesite=strict" in cookie

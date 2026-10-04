@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     secret_key: str = ""
     ocr_engine: str = "paddle"
     max_upload_mb: int = 15
+    frontend_dir: Path = Path("./frontend/dist")
 
 
 @lru_cache
