@@ -161,13 +161,39 @@ export function SettingsPage() {
             <h2>Servidor</h2>
           </div>
           <dl className="meta-list panel-body">
-            <dt>Motor de OCR</dt>
-            <dd>{system ? `PaddleOCR local · ${system.ocr_device === "cpu" ? "processador (CPU)" : `placa de vídeo (${system.ocr_device})`}` : "—"}</dd>
             <dt>Armazenamento</dt>
             <dd>{system?.encrypted_storage ? "Imagens criptografadas com AES-256-GCM" : "—"}</dd>
             <dt>Limite de envio</dt>
             <dd>{system ? `${system.max_upload_mb} MB por imagem` : "—"}</dd>
           </dl>
+        </section>
+
+        <section className="panel">
+          <div className="panel-head">
+            <h2>Motor de OCR</h2>
+            <button className="button button-ghost" type="button" onClick={() => api.system().then(setSystem)}>
+              Atualizar
+            </button>
+          </div>
+          {system ? (
+            <>
+              {system.ocr_status["Aviso"] && (
+                <div className="alert alert-warning ocr-warning">{system.ocr_status["Aviso"]}</div>
+              )}
+              <dl className="meta-list panel-body">
+                {Object.entries(system.ocr_status)
+                  .filter(([label]) => label !== "Aviso")
+                  .map(([label, value]) => (
+                    <div key={label} className="contents">
+                      <dt>{label}</dt>
+                      <dd className={label === "Providers ativos" || label === "Pacotes ONNX Runtime" ? "mono" : undefined}>{value}</dd>
+                    </div>
+                  ))}
+              </dl>
+            </>
+          ) : (
+            <p className="panel-body muted flush">Carregando…</p>
+          )}
         </section>
 
         <button className="button button-danger-ghost settings-logout" type="button" onClick={logout}>

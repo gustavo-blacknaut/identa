@@ -523,3 +523,4 @@ input[type="date"] { min-width: 0; }
   .link-list .link-date { grid-column: 1 / -1; }
   .public-content { padding: var(--space-4); }
 }
+.ocr-warning { margin: var(--space-4) var(--space-4) 0; }

@@ -99,6 +99,7 @@ export type AuditEntry = {
 export type SystemInfo = {
   ocr_engine: string;
   ocr_device: string;
+  ocr_status: Record<string, string>;
   encrypted_storage: boolean;
   max_upload_mb: number;
 };

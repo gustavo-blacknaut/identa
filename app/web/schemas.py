@@ -240,6 +240,7 @@ class SystemOut(BaseModel):
     ocr_device: str
     encrypted_storage: bool
     max_upload_mb: int
+    ocr_status: dict[str, str]
 
 
 class OtherDataOut(BaseModel):

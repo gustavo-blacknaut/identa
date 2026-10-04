@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Document, DocumentImage, DocumentStatus, ImageSide, Person, ScanLink
 from app.imaging.preprocess import InvalidImageError
 from app.ocr.base import OcrEngine
+from app.ocr.status import describe_engine
 from app.parsers.registry import available_parsers, get_parser
 from app.services.audit import record
 from app.services.documents import (
@@ -221,12 +222,14 @@ def audit(session: SessionDep, filters: FiltersDep, action: str = "", entity: st
 
 @router.get("/system")
 def system(request: Request) -> SystemOut:
+    engine = get_engine(request)
     settings = request.app.state.settings
     return SystemOut(
         ocr_engine=settings.ocr_engine,
         ocr_device=settings.ocr_device,
         encrypted_storage=True,
         max_upload_mb=settings.max_upload_mb,
+        ocr_status=describe_engine(engine, settings.ocr_device),
     )
 
 
