@@ -1,5 +1,5 @@
 from app.ocr.base import TextBox
-from app.parsers.base import DocumentParser, ExtractedField, FieldDefinition
+from app.parsers.base import DocumentParser, ExtractedField, FieldDefinition, combine_sides
 from app.parsers.common import CPF_PATTERN, as_cpf, as_date, as_name, first_present, has_cpf, has_date, looks_like_name
 from app.parsers.layout import find_value, search_pattern
 from app.parsers.registry import register
@@ -29,7 +29,7 @@ class CpfParser(DocumentParser):
     rules = DocumentRules(required_fields=("full_name", "cpf"), cpf_fields=("cpf",), past_date_fields=("birth_date",))
 
     def extract(self, front: list[TextBox], back: list[TextBox]) -> dict[str, ExtractedField]:
-        boxes = front + back
+        boxes = combine_sides(front, back)
         fields = {
             "full_name": as_name(find_value(boxes, LABELS["full_name"], ALL_LABELS, looks_like_name)),
             "cpf": as_cpf(

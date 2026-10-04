@@ -14,6 +14,7 @@ EXPECTED_RG = {
     "mother_name": "LUCIA HELENA OLIVEIRA",
     "cpf": "529.982.247-25",
     "issuing_authority": "SSP/SP",
+    "civil_registry": "CERT. NASC. LV 12 FL 34 N 5678",
 }
 
 

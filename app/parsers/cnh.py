@@ -1,7 +1,7 @@
 import re
 
 from app.ocr.base import TextBox
-from app.parsers.base import DocumentParser, ExtractedField, FieldDefinition
+from app.parsers.base import DocumentParser, ExtractedField, FieldDefinition, combine_sides
 from app.parsers.common import (
     CPF_PATTERN,
     as_cpf,
@@ -78,8 +78,8 @@ class CnhParser(DocumentParser):
         FieldDefinition("issue_date", "Data de emissão", "date"),
         FieldDefinition("rg_number", "Doc. identidade"),
         FieldDefinition("issuing_authority", "Órgão emissor"),
-        FieldDefinition("father_name", "Nome do pai"),
-        FieldDefinition("mother_name", "Nome da mãe"),
+        FieldDefinition("father_name", "Filiação (pai)", "parent"),
+        FieldDefinition("mother_name", "Filiação (mãe)", "parent"),
         FieldDefinition("mrz_raw", "MRZ (verso)", "multiline"),
     )
     rules = DocumentRules(
@@ -91,7 +91,7 @@ class CnhParser(DocumentParser):
     )
 
     def extract(self, front: list[TextBox], back: list[TextBox]) -> dict[str, ExtractedField]:
-        boxes = front + back
+        boxes = combine_sides(front, back)
         birth = find_value(boxes, LABELS["birth_date"], ALL_LABELS, has_date)
         identity = find_value(boxes, LABELS["identity"], ALL_LABELS, lambda text: any(char.isdigit() for char in text))
         fields: dict[str, ExtractedField | None] = {

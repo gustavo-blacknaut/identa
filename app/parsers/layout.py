@@ -5,11 +5,13 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 
 from app.ocr.base import TextBox
-from app.parsers.base import ExtractedField
+from app.parsers.base import ExtractedField, is_placeholder
 
 LABEL_SIMILARITY = 0.82
 MAX_BELOW_GAP_FACTOR = 3.5
 SAME_LINE_FACTOR = 0.6
+INNER_LABEL_SCORE = 0.9
+MIN_INNER_LABEL_LENGTH = 6
 
 ValueCheck = Callable[[str], bool]
 
@@ -40,18 +42,29 @@ def match_label(box: TextBox, variants: Iterable[str]) -> LabelMatch | None:
             continue
         prefix = box_compact[: len(variant_compact)]
         score = 1.0 if prefix == variant_compact else SequenceMatcher(None, prefix, variant_compact).ratio()
-        if score < LABEL_SIMILARITY or (best and best.score >= score):
+        if score >= LABEL_SIMILARITY and not (best and best.score >= score):
+            best = LabelMatch(box, text_after_compact_position(box.text, len(variant_compact)), score)
             continue
-        best = LabelMatch(box, strip_label_prefix(box.text, variant_compact), score)
+        position = box_compact.find(variant_compact, 1)
+        if position > 0 and len(variant_compact) >= MIN_INNER_LABEL_LENGTH and not (best and best.score >= INNER_LABEL_SCORE):
+            best = inner_label_match(box, box_compact, position, len(variant_compact))
     return best
 
 
-def strip_label_prefix(text: str, variant_compact: str) -> str:
+def inner_label_match(box: TextBox, box_compact: str, position: int, length: int) -> LabelMatch:
+    width = box.x1 - box.x0
+    x0 = box.x0 + width * position / len(box_compact)
+    x1 = box.x0 + width * (position + length) / len(box_compact)
+    virtual = TextBox(box.text, box.confidence, x0, box.y0, x1, box.y1)
+    return LabelMatch(virtual, text_after_compact_position(box.text, position + length), INNER_LABEL_SCORE)
+
+
+def text_after_compact_position(text: str, compact_length: int) -> str:
     consumed = 0
     for index, char in enumerate(normalize(text)):
         if char.isalnum():
             consumed += 1
-        if consumed == len(variant_compact):
+        if consumed == compact_length:
             return text[index + 1:].strip(" :.-/").strip()
     return ""
 
@@ -62,9 +75,21 @@ def find_label(boxes: list[TextBox], variants: Iterable[str]) -> LabelMatch | No
     return max(matches, key=lambda match: (match.score, -match.box.y0), default=None)
 
 
+def is_label_text(text: str, all_labels: Iterable[str]) -> bool:
+    remaining = compact(text)
+    label_compacts = sorted({compact(label) for label in all_labels if compact(label)}, key=len, reverse=True)
+    while remaining:
+        prefix = next((label for label in label_compacts if remaining.startswith(label)), None)
+        if prefix is None:
+            return False
+        remaining = remaining[len(prefix):]
+    return True
+
+
 def is_any_label(box: TextBox, all_labels: Iterable[str]) -> bool:
+    all_labels = tuple(all_labels)
     match = match_label(box, all_labels)
-    return bool(match and not match.remainder)
+    return bool(match and match.score >= LABEL_SIMILARITY and (not match.remainder or is_label_text(match.remainder, all_labels)))
 
 
 def boxes_right_of(label: TextBox, boxes: list[TextBox]) -> list[TextBox]:
@@ -103,15 +128,21 @@ def find_value(
     if label is None:
         return None
     all_labels = tuple(all_labels)
+    if label.remainder and is_placeholder(label.remainder):
+        return None
+    if label.remainder and is_label_text(label.remainder, all_labels):
+        label = LabelMatch(label.box, "", label.score)
     if label.remainder and accepts(label.remainder):
-        return ExtractedField(label.remainder, label.box.confidence)
+        return ExtractedField(label.remainder, label.box.confidence, label.box)
     directions = (boxes_below, boxes_right_of) if prefer == "below" else (boxes_right_of, boxes_below)
     for direction in directions:
         for candidate in direction(label.box, boxes)[:3]:
             if is_any_label(candidate, all_labels):
+                if direction is boxes_below:
+                    break
                 continue
             if accepts(candidate.text):
-                return ExtractedField(candidate.text.strip(), candidate.confidence)
+                return ExtractedField(candidate.text.strip(), candidate.confidence, candidate)
     return None
 
 
@@ -140,5 +171,5 @@ def search_pattern(boxes: list[TextBox], pattern: re.Pattern) -> ExtractedField 
     for box in sorted(boxes, key=lambda item: (item.y0, item.x0)):
         match = pattern.search(normalize(box.text))
         if match:
-            return ExtractedField(match.group(0), box.confidence)
+            return ExtractedField(match.group(0), box.confidence, box)
     return None

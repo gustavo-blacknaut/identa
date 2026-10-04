@@ -1,14 +1,18 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from app.ocr.base import TextBox
 from app.validators.rules import DocumentRules, validate_fields
+
+SIDE_OFFSET = 100_000.0
+EMPTY_PLACEHOLDERS = {"*", "-", "—", "X"}
 
 
 @dataclass
 class ExtractedField:
     value: str
     confidence: float | None
+    box: TextBox | None = None
 
 
 @dataclass
@@ -29,6 +33,25 @@ class FieldDefinition:
     kind: str = "text"
 
 
+def is_placeholder(text: str) -> bool:
+    stripped = text.replace(" ", "")
+    return not stripped or set(stripped) <= EMPTY_PLACEHOLDERS
+
+
+def combine_sides(*sides: list[TextBox]) -> list[TextBox]:
+    combined: list[TextBox] = []
+    for index, boxes in enumerate(sides):
+        offset = index * SIDE_OFFSET
+        combined.extend(replace(box, y0=box.y0 + offset, y1=box.y1 + offset) for box in boxes if not is_placeholder(box.text))
+    return combined
+
+
+def side_of(box: TextBox) -> tuple[int, TextBox]:
+    index = int(box.y0 // SIDE_OFFSET)
+    offset = index * SIDE_OFFSET
+    return index, replace(box, y0=box.y0 - offset, y1=box.y1 - offset)
+
+
 class DocumentParser(ABC):
     doc_type: str
     display_name: str
@@ -39,7 +62,7 @@ class DocumentParser(ABC):
     def extract(self, front: list[TextBox], back: list[TextBox]) -> dict[str, ExtractedField]: ...
 
     def parse(self, front: list[TextBox], back: list[TextBox]) -> ExtractionResult:
-        fields = {name: value for name, value in self.extract(front, back).items() if value.value}
+        fields = {name: value for name, value in self.extract(front, back).items() if value and value.value}
         result = ExtractionResult(self.doc_type, fields, raw_text=build_raw_text(front, back))
         result.issues = self.validate(result.values())
         return result
@@ -49,6 +72,10 @@ class DocumentParser(ABC):
             {"field": issue.field_name, "code": issue.code.value, "message": issue.message}
             for issue in validate_fields(values, self.rules)
         ]
+
+    @property
+    def field_names(self) -> tuple[str, ...]:
+        return tuple(definition.name for definition in self.field_definitions)
 
 
 def build_raw_text(*sides: list[TextBox]) -> str:

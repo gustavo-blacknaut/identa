@@ -115,3 +115,81 @@ def photograph(card_bgr: np.ndarray, angle_degrees: float = 8, tilt: float = 0.0
 
 def encode_jpeg(image_bgr: np.ndarray) -> bytes:
     return cv2.imencode(".jpg", image_bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
+
+
+FICTITIOUS_MG_RG = {
+    "full_name": "JOAO BATISTA FERREIRA",
+    "mother_name": "MARIA APARECIDA FERREIRA SOUZA",
+    "father_name": "ANTONIO CARLOS FERREIRA",
+    "birth_date": "07/03/1994",
+    "birthplace": "NOVA LIMA-MG",
+    "issuing_authority": "PC/MG",
+    "rg_number": "MG-12.345.678",
+    "issue_date": "15/08/2019",
+    "cpf": "111.444.777-35",
+}
+
+
+def box(text: str, x0: float, y0: float, x1: float, y1: float, confidence: float = 0.98) -> TextBox:
+    return TextBox(text, confidence, x0, y0, x1, y1)
+
+
+def mg_rg_front_boxes(values: dict[str, str] = FICTITIOUS_MG_RG) -> list[TextBox]:
+    return [
+        box("REPUBLICA FEDERATIVA DO BRASIL", 344, 171, 1325, 235),
+        box("ESTADO DE MINAS GERAIS", 498, 247, 1160, 300),
+        box("POLÍCIA CIVIL DO ESTADO DE MINAS GERAIS", 501, 282, 1075, 319),
+        box("INSTITUTO DE IDENTIFICAÇÃO", 498, 303, 891, 335),
+        box(f"NOME {values['full_name']}", 273, 388, 988, 444),
+        box("FILIAÇÃO", 689, 503, 833, 541),
+        box(values["mother_name"], 687, 532, 1322, 581),
+        box(values["father_name"], 689, 604, 1164, 647),
+        box("DATA NASCIMENTO ORGÃO EXPEDIDOR FATOR RH", 683, 656, 1420, 704),
+        box("PCMG", 978, 696, 1078, 742),
+        box("*****", 1275, 698, 1370, 725),
+        box(values["birth_date"], 684, 699, 867, 743),
+        box("NATURALIDADE", 683, 737, 919, 781),
+        box(values["birthplace"], 682, 774, 927, 824),
+        box("BRASILEIRO", 679, 814, 888, 863),
+        box("*****", 684, 855, 783, 890),
+        box("Jzao Bat Ferrera", 855, 858, 1294, 961, 0.54),
+        box("ASSINATURA DO TITULAR", 889, 963, 1260, 1004),
+        box("CARTEIRA DE IDENTIDADE", 508, 1017, 1266, 1084),
+    ]
+
+
+def mg_rg_back_boxes(values: dict[str, str] = FICTITIOUS_MG_RG) -> list[TextBox]:
+    cpf_digits = values["cpf"].replace(".", "").replace("-", "")
+    return [
+        box("LEI Nº 7.116, DE 29 DE AGOSTO DE 1983", 318, 37, 1641, 121),
+        box("VIA-1", 1584, 152, 1709, 210),
+        box("PCMG-2019", 1265, 155, 1453, 213),
+        box("DNI *****", 780, 156, 1005, 220),
+        box(f"CPF {cpf_digits}", 181, 166, 567, 224),
+        box(values["issue_date"], 1479, 217, 1707, 279),
+        box("DATA DE EXPEDIÇÃO", 1025, 226, 1414, 286),
+        box(f"REGISTRO GERAL {values['rg_number']}", 180, 230, 892, 294),
+        box("REGISTRO CIVIL", 183, 312, 510, 357),
+        box("NASC. LV-12 FL-345 TERMO 6789 NOVA LIMA-MG", 176, 343, 1047, 413),
+        box("*****", 183, 405, 314, 438),
+        box("CTPS / SÉRIE / UF", 712, 461, 1074, 521),
+        box("T. ELEITOR / ZONA / SEC", 178, 474, 667, 527),
+        box("*****", 715, 514, 847, 552),
+        box("*****", 184, 527, 314, 559),
+        box("POLEGAR DIREITO", 1337, 546, 1685, 605),
+        box("IDENTIDADE PROFISSIONAL", 714, 562, 1253, 617),
+        box("NIS / PIS / PASEP", 179, 574, 541, 631),
+        box("*****", 718, 613, 849, 656),
+        box("*****", 184, 629, 314, 662),
+        box("*****", 719, 663, 852, 707),
+        box("CERT. MILITAR", 183, 680, 485, 732),
+        box("*****", 722, 718, 852, 756),
+        box("*****", 186, 732, 320, 769),
+        box("CNS", 719, 768, 815, 823),
+        box("CNH", 180, 789, 284, 834),
+        box("*****", 725, 818, 852, 855),
+        box("*****", 188, 839, 314, 871),
+        box("FULANO DE TAL SILVA", 693, 1053, 1155, 1116),
+        box("DIRETOR DO INSTITUTO DE IDENTIFICAÇÃO", 620, 1088, 1230, 1153),
+        box("VALIDA EM TODO O TERRITORIO NACIONAL", 335, 1131, 1710, 1257),
+    ]
