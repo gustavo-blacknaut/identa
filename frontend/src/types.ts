@@ -52,24 +52,49 @@ export type DocumentDetail = DocumentSummary & {
   crops: ImageInfo[];
   raw_text: string;
   person_id: number | null;
+  image_count: number;
 };
 
-export type Stats = {
-  documents: number;
-  pending: number;
-  people: number;
-};
-
-export type Overview = {
-  stats: Stats;
-  documents: DocumentSummary[];
-};
+export type PersonStatus = DocumentStatus | null;
 
 export type Person = {
   id: number;
   full_name: string | null;
   cpf: string | null;
   birth_date: string | null;
+  status: DocumentStatus | null;
+  doc_types: string[];
   documents: number;
+  images: number;
+  created_at: string;
   updated_at: string;
+};
+
+export type PersonDetail = Person & {
+  mother_name: string | null;
+  father_name: string | null;
+  birthplace: string | null;
+  document_list: DocumentSummary[];
+};
+
+export type PageResult<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type AuditEntry = {
+  id: number;
+  occurred_at: string;
+  username: string | null;
+  action: string;
+  entity: string;
+  entity_id: number | null;
+};
+
+export type SystemInfo = {
+  ocr_engine: string;
+  encrypted_storage: boolean;
+  max_upload_mb: number;
 };

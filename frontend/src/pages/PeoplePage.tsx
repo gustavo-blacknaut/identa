@@ -1,95 +1,132 @@
-import { Trash2, Users } from "lucide-react";
+import { FilePlus2, SearchX, Trash2, Users } from "lucide-react";
 import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { PageHeader } from "../components/Navbar";
+import { PageHead } from "../components/AppShell";
+import { DeleteDialog } from "../components/DeleteDialog";
+import { ListFilters, useUrlFilters } from "../components/ListFilters";
+import { EmptyState, ListBar, SkeletonRows } from "../components/ListState";
+import { StatusLabel } from "../components/Status";
 import { useToast } from "../components/Toast";
-import { formatCpf, initials, relativeTime } from "../format";
+import { DOCUMENT_TYPE_LABELS, formatCpf, formatDate, initials } from "../format";
 import type { Person } from "../types";
-import { usePolling } from "../usePolling";
-
-const REFRESH_INTERVAL_MS = 6000;
+import { useInfiniteList, useSentinel } from "../useInfiniteList";
 
 export function PeoplePage() {
-  const { data, refresh } = usePolling(api.people, REFRESH_INTERVAL_MS);
-  const [pending, setPending] = useState<Person | null>(null);
+  const controls = useUrlFilters();
+  const navigate = useNavigate();
   const toast = useToast();
+  const list = useInfiniteList(api.people, controls.filters);
+  const sentinel = useSentinel(list.loadMore, list.hasMore);
+  const [pending, setPending] = useState<Person | null>(null);
 
   const remove = async () => {
     if (!pending) return;
-    try {
-      await api.deletePerson(pending.id);
-      toast("Pessoa e documentos apagados.");
-      await refresh();
-    } catch (caught) {
-      toast(caught instanceof Error ? caught.message : "Falha ao apagar.", "error");
-    } finally {
-      setPending(null);
-    }
+    await api.deletePerson(pending.id);
+    list.remove(pending.id);
+    toast(`${pending.full_name ?? "Pessoa"} apagada.`);
+    setPending(null);
   };
 
   return (
-    <>
-      <PageHeader
+    <div className="page page-fill">
+      <PageHead
         title="Pessoas"
-        icon={Users}
-        subtitle="Cadastro consolidado a partir dos documentos revisados, sem duplicar CPF."
+        description="Cadastro consolidado por CPF a partir dos documentos processados."
+        actions={
+          <Link to="/novo" className="button hide-compact">
+            <FilePlus2 size={16} strokeWidth={1.75} />
+            Novo documento
+          </Link>
+        }
       />
-      <section className="card card-flush">
-        {data === null ? (
-          <div className="skeleton-list">
-            {[0, 1, 2].map((item) => (
-              <div key={item} className="skeleton-row" />
-            ))}
-          </div>
-        ) : data.length === 0 ? (
-          <div className="empty">
-            <span className="empty-icon">
-              <Users size={24} />
-            </span>
-            <strong>Nenhuma pessoa cadastrada</strong>
-            As pessoas aparecem aqui quando um documento é revisado e salvo.
-          </div>
-        ) : (
-          <ul className="doc-list">
-            {data.map((person) => (
-              <li key={person.id} className="doc-row">
-                <span className="avatar">{initials(person.full_name)}</span>
-                <span className="doc-main">
-                  <span className="doc-name">{person.full_name || "Sem nome"}</span>
-                  <span className="doc-meta">
-                    {person.cpf && <span className="mono">{formatCpf(person.cpf)}</span>}
-                    {person.birth_date && <span>Nasc. {person.birth_date}</span>}
-                    <span>
-                      {person.documents} {person.documents === 1 ? "documento" : "documentos"}
-                    </span>
-                    <span>Atualizado {relativeTime(person.updated_at)}</span>
-                  </span>
-                </span>
-                <span className="doc-side">
-                  <button className="button button-danger" type="button" onClick={() => setPending(person)}>
-                    <Trash2 size={16} />
-                    <span className="hide-mobile">Apagar</span>
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+      <section className="panel list-panel">
+        <ListFilters controls={controls} dateLabel="Período de cadastro" searchPlaceholder="Nome ou CPF" />
+        <ListBar total={list.total} singular="pessoa" pluralLabel="pessoas" filtered={controls.active} onClear={controls.clear} />
+        <div className="list-scroll">
+          {list.total === null && !list.error ? (
+            <SkeletonRows />
+          ) : list.items.length === 0 ? (
+            controls.active ? (
+              <EmptyState icon={SearchX} title="Nenhuma pessoa encontrada" text="Ajuste a busca ou limpe os filtros para ver todo o cadastro." />
+            ) : (
+              <EmptyState
+                icon={Users}
+                title="Nenhuma pessoa cadastrada"
+                text="As pessoas aparecem aqui assim que um documento com CPF válido é processado."
+                action={
+                  <Link to="/novo" className="button">
+                    <FilePlus2 size={16} strokeWidth={1.75} />
+                    Enviar primeiro documento
+                  </Link>
+                }
+              />
+            )
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th className="w-150">CPF</th>
+                  <th className="w-130 col-optional">Documentos</th>
+                  <th className="w-190">Status</th>
+                  <th className="w-120 col-optional">Cadastro</th>
+                  <th className="cell-actions"><span className="visually-hidden">Ações</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.items.map((person) => (
+                  <tr key={person.id} onClick={() => navigate(`/pessoas/${person.id}`)}>
+                    <td className="cell-primary">
+                      <Link to={`/pessoas/${person.id}`} className="cell-name" onClick={(event) => event.stopPropagation()}>
+                        <span className="avatar" aria-hidden="true">{initials(person.full_name)}</span>
+                        <span>{person.full_name || "Sem nome"}</span>
+                      </Link>
+                    </td>
+                    <td className="cell-meta mono">{formatCpf(person.cpf) || "—"}</td>
+                    <td className="cell-meta col-optional">
+                      {person.doc_types.map((type) => DOCUMENT_TYPE_LABELS[type] ?? type.toUpperCase()).join(" · ") || "—"}
+                    </td>
+                    <td className="cell-meta"><StatusLabel status={person.status} /></td>
+                    <td className="cell-meta col-optional">{formatDate(person.created_at)}</td>
+                    <td className="cell-actions">
+                      <button
+                        className="icon-button"
+                        type="button"
+                        aria-label={`Apagar ${person.full_name ?? "pessoa"}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPending(person);
+                        }}
+                      >
+                        <Trash2 size={16} strokeWidth={1.75} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <div ref={sentinel} className="list-sentinel" />
+          {list.loading && list.items.length > 0 && <div className="list-loading">Carregando mais…</div>}
+          {list.error && <div className="list-loading">{list.error}</div>}
+        </div>
       </section>
-      <ConfirmDialog
+      <DeleteDialog
         open={pending !== null}
-        title="Apagar pessoa?"
-        message={
+        title="Apagar pessoa e documentos"
+        description={
           <>
-            <strong>{pending?.full_name || "Esta pessoa"}</strong> e todos os documentos e imagens vinculados serão apagados
-            definitivamente. Essa ação não pode ser desfeita.
+            <strong>{pending?.full_name ?? "Esta pessoa"}</strong> será removida do cadastro junto com tudo o que está vinculado a ela.
           </>
         }
-        confirmLabel="Apagar definitivamente"
+        documents={pending?.documents ?? 0}
+        images={pending?.images ?? 0}
+        confirmationValues={[pending?.full_name ?? "", pending?.cpf ?? ""]}
+        confirmationLabel="Para confirmar, digite o nome completo ou o CPF"
         onConfirm={remove}
         onClose={() => setPending(null)}
       />
-    </>
+    </div>
   );
 }

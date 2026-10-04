@@ -2,9 +2,13 @@ export type ConfidenceLevel = "high" | "medium" | "low" | "unknown";
 
 const HIGH_CONFIDENCE = 0.9;
 const MEDIUM_CONFIDENCE = 0.75;
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+
+export const DOCUMENT_TYPE_LABELS: Record<string, string> = { rg: "RG", cnh: "CNH", cpf: "CPF" };
+
+export const STATUS_LABELS: Record<string, string> = {
+  pending_review: "Pendente de revisão",
+  reviewed: "Revisado",
+};
 
 export function confidenceLevel(confidence: number | null | undefined): ConfidenceLevel {
   if (confidence === null || confidence === undefined) return "unknown";
@@ -29,10 +33,20 @@ export function initials(name: string | null): string {
   return (first + last).toUpperCase();
 }
 
-export function relativeTime(iso: string, now: number = Date.now()): string {
-  const elapsed = now - new Date(iso).getTime();
-  if (elapsed < MINUTE) return "agora mesmo";
-  if (elapsed < HOUR) return `há ${Math.floor(elapsed / MINUTE)} min`;
-  if (elapsed < DAY) return `há ${Math.floor(elapsed / HOUR)} h`;
+export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count.toLocaleString("pt-BR")} ${count === 1 ? singular : pluralForm}`;
 }

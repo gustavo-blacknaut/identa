@@ -1,6 +1,16 @@
-import type { DocumentDetail, DocumentType, Overview, Person, User } from "./types";
+import type {
+  AuditEntry,
+  DocumentDetail,
+  DocumentSummary,
+  DocumentType,
+  PageResult,
+  Person,
+  PersonDetail,
+  SystemInfo,
+  User,
+} from "./types";
 
-export const UNAUTHORIZED_EVENT = "green-ocr:unauthorized";
+export const UNAUTHORIZED_EVENT = "registra:unauthorized";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -32,13 +42,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function withQuery(path: string, params: URLSearchParams): string {
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
 export const api = {
   me: () => request<User>("/api/auth/me"),
   login: (username: string, password: string) =>
     request<User>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),
-  overview: () => request<Overview>("/api/overview"),
+  system: () => request<SystemInfo>("/api/system"),
   documentTypes: () => request<DocumentType[]>("/api/document-types"),
+  people: (params: URLSearchParams) => request<PageResult<Person>>(withQuery("/api/people", params)),
+  person: (id: number) => request<PersonDetail>(`/api/people/${id}`),
+  deletePerson: (id: number) => request<void>(`/api/people/${id}`, { method: "DELETE" }),
+  documents: (params: URLSearchParams) => request<PageResult<DocumentSummary>>(withQuery("/api/documents", params)),
   document: (id: number) => request<DocumentDetail>(`/api/documents/${id}`),
   upload: (form: FormData) => request<DocumentDetail>("/api/documents", { method: "POST", body: form }),
   saveDocument: (id: number, values: Record<string, string>) =>
@@ -49,6 +68,5 @@ export const api = {
       body: JSON.stringify({ doc_type: docType }),
     }),
   deleteDocument: (id: number) => request<void>(`/api/documents/${id}`, { method: "DELETE" }),
-  people: () => request<Person[]>("/api/people"),
-  deletePerson: (id: number) => request<void>(`/api/people/${id}`, { method: "DELETE" }),
+  audit: (params: URLSearchParams) => request<PageResult<AuditEntry>>(withQuery("/api/audit", params)),
 };
