@@ -24,7 +24,6 @@ const PRIMARY: NavEntry[] = [
 ];
 const SECONDARY: NavEntry[] = [
   { to: "/auditoria", label: "Auditoria", icon: ScrollText },
-  { to: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 const COLLAPSED_KEY = "registra:sidebar-collapsed";
 
@@ -120,10 +119,14 @@ export function AppShell({ children }: { children: ReactNode }) {
               <PanelLeftOpen size={18} strokeWidth={1.75} />
             </button>
           )}
-          <div className="sidebar-user" title={user?.username}>
+          <NavLink to="/configuracoes" className="sidebar-user" title={collapsed ? "Administração" : undefined}>
             <span className="avatar">{user?.username.slice(0, 1).toUpperCase()}</span>
-            <span className="sidebar-user-name">{user?.username}</span>
-          </div>
+            <span className="sidebar-user-text">
+              <span className="sidebar-user-name">{user?.username}</span>
+              <span className="sidebar-user-role">Administração</span>
+            </span>
+            <Settings size={16} strokeWidth={1.75} className="sidebar-user-icon" />
+          </NavLink>
           <button
             className="nav-item nav-button"
             type="button"

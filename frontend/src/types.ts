@@ -75,6 +75,7 @@ export type PersonDetail = Person & {
   father_name: string | null;
   birthplace: string | null;
   document_list: DocumentSummary[];
+  other_data: OtherData[];
 };
 
 export type PageResult<T> = {
@@ -91,10 +92,60 @@ export type AuditEntry = {
   action: string;
   entity: string;
   entity_id: number | null;
+  details: string | null;
+  ip_address: string | null;
 };
 
 export type SystemInfo = {
   ocr_engine: string;
+  ocr_device: string;
   encrypted_storage: boolean;
   max_upload_mb: number;
+};
+
+export type OtherData = {
+  label: string;
+  value: string;
+  doc_type: string;
+  document_id: number;
+};
+
+export type Verification = {
+  changes: string[];
+  problems: string[];
+  person: PersonDetail;
+};
+
+export type Settings = {
+  timezone: string;
+};
+
+export type SessionInfo = {
+  id: number;
+  user_agent: string | null;
+  ip_address: string | null;
+  created_at: string;
+  last_used_at: string;
+  expires_at: string;
+  current: boolean;
+};
+
+export type LinkState = "active" | "used" | "expired" | "revoked";
+
+export type ScanLink = {
+  id: number;
+  label: string | null;
+  state: LinkState;
+  created_at: string;
+  expires_at: string;
+  used_at: string | null;
+  document_id: number | null;
+};
+
+export type ScanLinkCreated = ScanLink & { token: string };
+
+export type PublicLink = {
+  label: string | null;
+  state: LinkState;
+  expires_at: string;
 };

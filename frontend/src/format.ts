@@ -33,20 +33,62 @@ export function initials(name: string | null): string {
   return (first + last).toUpperCase();
 }
 
-export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+let currentTimeZone = "America/Sao_Paulo";
+
+export function setTimeZone(timeZone: string): void {
+  currentTimeZone = timeZone;
 }
 
-export function formatDateTime(iso: string): string {
+export function getTimeZone(): string {
+  return currentTimeZone;
+}
+
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: currentTimeZone,
+  });
+}
+
+export function formatDateTime(iso: string, withSeconds = false): string {
   return new Date(iso).toLocaleString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    second: withSeconds ? "2-digit" : undefined,
+    timeZone: currentTimeZone,
   });
 }
 
 export function plural(count: number, singular: string, pluralForm: string): string {
   return `${count.toLocaleString("pt-BR")} ${count === 1 ? singular : pluralForm}`;
+}
+
+export function describeDevice(userAgent: string | null): string {
+  if (!userAgent) return "Dispositivo desconhecido";
+  const browser = /Edg\//.test(userAgent)
+    ? "Edge"
+    : /Chrome\//.test(userAgent)
+      ? "Chrome"
+      : /Firefox\//.test(userAgent)
+        ? "Firefox"
+        : /Safari\//.test(userAgent)
+          ? "Safari"
+          : "Navegador";
+  const system = /Android/.test(userAgent)
+    ? "Android"
+    : /iPhone|iPad/.test(userAgent)
+      ? "iOS"
+      : /Windows/.test(userAgent)
+        ? "Windows"
+        : /Mac OS/.test(userAgent)
+          ? "macOS"
+          : /Linux/.test(userAgent)
+            ? "Linux"
+            : "sistema desconhecido";
+  return `${browser} · ${system}`;
 }
