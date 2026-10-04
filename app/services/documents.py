@@ -18,7 +18,7 @@ from app.imaging.preprocess import (
 )
 from app.ocr.base import OcrEngine, TextBox
 from app.ocr.orientation import read_with_best_orientation
-from app.parsers.base import ExtractedField, side_of
+from app.parsers.base import ExtractedField, side_of, strip_accents
 from app.parsers.classifier import classify
 from app.parsers.common import repair_cpf_candidates
 from app.parsers.registry import get_parser
@@ -324,6 +324,8 @@ def upsert_person(session: Session, document: Document, overwrite: bool = True) 
         person.cpf = cpf
     for name in PERSON_COLUMNS:
         value = getattr(document, name)
+        if isinstance(value, str):
+            value = strip_accents(value)
         if value and (overwrite or getattr(person, name) is None):
             setattr(person, name, value)
     return person
