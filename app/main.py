@@ -45,7 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     cipher = FileCipher(settings.encryption_key)
     if len(settings.secret_key) < MINIMUM_SECRET_LENGTH:
         raise MissingSecretKeyError(f"GREEN_OCR_SECRET_KEY precisa ter pelo menos {MINIMUM_SECRET_LENGTH} caracteres")
-    application = FastAPI(title="Green OCR", docs_url=None, redoc_url=None, openapi_url=None)
+    application = FastAPI(title="Registra", docs_url=None, redoc_url=None, openapi_url=None)
     application.state.settings = settings
     application.state.session_factory = build_session_factory(build_engine(settings.database_url))
     application.state.store = EncryptedFileStore(settings.storage_dir, cipher)

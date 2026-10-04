@@ -38,7 +38,7 @@ def run_create_user(arguments: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="green-ocr")
+    parser = argparse.ArgumentParser(prog="registra")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("generate-key", help="Gera uma chave para GREEN_OCR_ENCRYPTION_KEY ou GREEN_OCR_SECRET_KEY")
     user_parser = commands.add_parser("create-user", help="Cria um usuário ou redefine a senha de um existente")
