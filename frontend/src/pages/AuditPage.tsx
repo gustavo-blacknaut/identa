@@ -1,20 +1,55 @@
 import { ScrollText, SearchX } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { PageHead } from "../components/AppShell";
 import { EmptyState, ListBar, SkeletonRows } from "../components/ListState";
-import { formatDateTime } from "../format";
+import { formatDateTime, getTimeZone } from "../format";
+import type { AuditEntry } from "../types";
 import { useInfiniteList, useSentinel } from "../useInfiniteList";
 
 const ACTION_LABELS: Record<string, string> = {
-  login: "Login",
-  create: "Processamento",
-  review: "Revisão",
-  reprocess: "Reprocessamento",
-  delete: "Exclusão",
+  login: "Entrou no sistema",
+  login_failed: "Tentativa de login recusada",
+  logout: "Saiu do sistema",
+  view: "Visualizou",
+  create: "Criou",
+  update: "Editou",
+  review: "Revisou",
+  verify: "Verificou",
+  reprocess: "Reprocessou",
+  delete: "Apagou",
+  revoke: "Revogou",
+  upload: "Recebeu envio",
 };
-const ENTITY_LABELS: Record<string, string> = { document: "Documento", person: "Pessoa", user: "Usuário" };
-const FILTER_KEYS = ["action", "from", "to"];
+const ENTITY_LABELS: Record<string, string> = {
+  document: "Documento",
+  person: "Pessoa",
+  user: "Usuário",
+  image: "Imagem",
+  settings: "Configurações",
+  session: "Sessões",
+  scan_link: "Link de envio",
+};
+const ENTITY_ROUTES: Record<string, string> = { document: "/documentos", person: "/pessoas" };
+const FILTER_KEYS = ["action", "entity", "from", "to"];
+
+function EntityReference({ entry }: { entry: AuditEntry }) {
+  const label = ENTITY_LABELS[entry.entity] ?? entry.entity;
+  const route = ENTITY_ROUTES[entry.entity];
+  if (entry.entity_id === null) return <>{label}</>;
+  if (route && entry.action !== "delete") {
+    return (
+      <Link to={`${route}/${entry.entity_id}`} className="audit-link">
+        {label} #{entry.entity_id}
+      </Link>
+    );
+  }
+  return (
+    <>
+      {label} <span className="mono">#{entry.entity_id}</span>
+    </>
+  );
+}
 
 export function AuditPage() {
   const [params, setParams] = useSearchParams();
@@ -40,7 +75,7 @@ export function AuditPage() {
 
   return (
     <div className="page page-fill">
-      <PageHead title="Auditoria" description="Registro de acessos e alterações. Não contém dados pessoais dos documentos." />
+      <PageHead title="Auditoria" description={`Todas as ações registradas, com data e hora em ${getTimeZone().replace("_", " ")}.`} />
       <section className="panel list-panel">
         <div className="filters filters-compact expanded">
           <label>
@@ -48,6 +83,17 @@ export function AuditPage() {
             <select value={params.get("action") ?? ""} onChange={(event) => update("action", event.target.value)}>
               <option value="">Todas as ações</option>
               {Object.entries(ACTION_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="visually-hidden">Registro</span>
+            <select value={params.get("entity") ?? ""} onChange={(event) => update("entity", event.target.value)}>
+              <option value="">Todos os registros</option>
+              {Object.entries(ENTITY_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -67,25 +113,26 @@ export function AuditPage() {
           ) : list.items.length === 0 ? (
             <EmptyState icon={active ? SearchX : ScrollText} title="Nenhum registro" text={active ? "Nenhuma ação no período ou filtro escolhido." : "As ações aparecem aqui conforme o sistema é usado."} />
           ) : (
-            <table className="table table-static">
+            <table className="table table-static audit-table">
               <thead>
                 <tr>
-                  <th className="w-150">Data e hora</th>
-                  <th className="w-150">Usuário</th>
-                  <th className="w-150">Ação</th>
+                  <th className="w-190">Data e hora</th>
+                  <th className="w-130">Usuário</th>
+                  <th className="w-190">Ação</th>
                   <th>Registro</th>
+                  <th className="col-optional">Detalhes</th>
+                  <th className="w-130 col-optional">IP</th>
                 </tr>
               </thead>
               <tbody>
                 {list.items.map((entry) => (
-                  <tr key={entry.id}>
-                    <td className="cell-primary mono">{formatDateTime(entry.occurred_at)}</td>
-                    <td className="cell-meta">{entry.username ?? "—"}</td>
-                    <td className="cell-meta">{ACTION_LABELS[entry.action] ?? entry.action}</td>
-                    <td className="cell-meta">
-                      {ENTITY_LABELS[entry.entity] ?? entry.entity}
-                      {entry.entity_id !== null && <span className="mono muted"> #{entry.entity_id}</span>}
-                    </td>
+                  <tr key={entry.id} className={entry.action === "login_failed" || entry.action === "delete" ? "audit-alert" : undefined}>
+                    <td className="audit-when mono">{formatDateTime(entry.occurred_at, true)}</td>
+                    <td className="audit-user">{entry.username ?? (entry.action === "upload" ? "Link público" : "—")}</td>
+                    <td className="audit-action">{ACTION_LABELS[entry.action] ?? entry.action}</td>
+                    <td className="audit-entity"><EntityReference entry={entry} /></td>
+                    <td className="audit-details col-optional">{entry.details ?? ""}</td>
+                    <td className="audit-ip mono col-optional">{entry.ip_address ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
