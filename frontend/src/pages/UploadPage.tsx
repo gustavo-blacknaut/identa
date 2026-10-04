@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { PageHead } from "../components/AppShell";
 import { Dropzone } from "../components/Dropzone";
+import { ScanLinks } from "../components/ScanLinks";
 
 const CHECKLIST = [
   "Documento inteiro na foto, sem cortar as bordas",
@@ -37,33 +38,36 @@ export function UploadPage() {
   return (
     <div className="page">
       <PageHead title="Novo documento" description="RG, CNH ou cartão CPF. O tipo é identificado automaticamente." />
-      <form className="panel narrow" onSubmit={submit}>
-        <div className="panel-body">
-          {error && <div className="alert alert-danger">{error}</div>}
-          <div className="upload">
-            <Dropzone label="Frente" hint="Tirar foto ou escolher arquivo" file={front} onChange={setFront} />
-            <Dropzone label="Verso" hint="Tirar foto ou escolher arquivo" file={back} onChange={setBack} />
+      <div className="upload-stack">
+        <form className="panel narrow" onSubmit={submit}>
+          <div className="panel-body">
+            {error && <div className="alert alert-danger">{error}</div>}
+            <div className="upload">
+              <Dropzone label="Frente" hint="Tirar foto ou escolher arquivo" file={front} onChange={setFront} />
+              <Dropzone label="Verso" hint="Tirar foto ou escolher arquivo" file={back} onChange={setBack} />
+            </div>
+            <ul className="checklist">
+              {CHECKLIST.map((item) => (
+                <li key={item}>
+                  <Check size={16} strokeWidth={2} />
+                  {item}
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="checklist">
-            {CHECKLIST.map((item) => (
-              <li key={item}>
-                <Check size={16} strokeWidth={2} />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="form-footer">
-          <span className="footer-note">
-            <ShieldCheck size={14} strokeWidth={1.75} />
-            Originais guardados criptografados neste servidor
-          </span>
-          <button className="button" type="submit" disabled={busy || (!front && !back)}>
-            <ScanText size={16} strokeWidth={1.75} />
-            Extrair dados
-          </button>
-        </div>
-      </form>
+          <div className="form-footer">
+            <span className="footer-note">
+              <ShieldCheck size={14} strokeWidth={1.75} />
+              Originais guardados criptografados neste servidor
+            </span>
+            <button className="button" type="submit" disabled={busy || (!front && !back)}>
+              <ScanText size={16} strokeWidth={1.75} />
+              Extrair dados
+            </button>
+          </div>
+        </form>
+        <ScanLinks />
+      </div>
       {busy && (
         <div className="processing" role="status">
           <div className="processing-card">

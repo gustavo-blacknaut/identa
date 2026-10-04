@@ -27,6 +27,11 @@ def newest_document_id(page: Page, base_url: str) -> int:
     return json.loads(response.text())["items"][0]["id"]
 
 
+def newest_person_id(page: Page, base_url: str) -> int:
+    response = page.request.get(f"{base_url}/api/people?page_size=1")
+    return json.loads(response.text())["items"][0]["id"]
+
+
 def capture(page: Page, output: Path, name: str, width: int, theme: str, full_page: bool = False) -> None:
     path = output / f"{name}-{width}-{theme}.png"
     page.screenshot(path=str(path), full_page=full_page)
@@ -86,6 +91,38 @@ def capture_width(page: Page, base_url: str, output: Path, width: int, theme: st
     page.goto(f"{base_url}/novo")
     settle(page)
     capture(page, output, "novo-documento", width, theme)
+    page.click("button:has-text('Gerar link de envio')")
+    page.fill("input[placeholder^='Ex.']", "Admissão — vaga de recepção")
+    page.click("button:has-text('Gerar')")
+    page.wait_for_selector(".link-result")
+    public_url = page.locator(".link-box input").input_value()
+    capture(page, output, "link-envio", width, theme, full_page=True)
+
+    visitor = page.context.browser.new_context(viewport=page.viewport_size, color_scheme=theme)
+    public_page = visitor.new_page()
+    public_page.goto(f"{base_url}/enviar/{public_url.split('/enviar/')[1]}")
+    public_page.wait_for_selector(".dropzone")
+    capture(public_page, output, "envio-publico", width, theme)
+    visitor.close()
+
+    page.goto(f"{base_url}/pessoas/{newest_person_id(page, base_url)}")
+    page.wait_for_selector(".meta-list")
+    settle(page)
+    page.click("button:has-text('Verificar')")
+    page.wait_for_selector(".verification")
+    capture(page, output, "pessoa", width, theme, full_page=True)
+    page.click("button:has-text('Editar')")
+    capture(page, output, "pessoa-editar", width, theme)
+
+    page.goto(f"{base_url}/auditoria")
+    page.wait_for_selector(".audit-table tbody tr")
+    settle(page)
+    capture(page, output, "auditoria", width, theme)
+
+    page.goto(f"{base_url}/configuracoes")
+    page.wait_for_selector(".session-list")
+    settle(page)
+    capture(page, output, "configuracoes", width, theme, full_page=True)
 
 
 def main() -> None:
