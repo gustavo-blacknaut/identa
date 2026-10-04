@@ -5,7 +5,16 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from app.imaging.preprocess import InvalidImageError, find_document_corners, prepare_image
+from app.imaging.preprocess import (
+    InvalidImageError,
+    encode_processed,
+    encode_thumbnail,
+    find_document_corners,
+    prepare_image,
+    split_open_document,
+)
+from app.ocr.base import TextBox
+from app.ocr.orientation import read_with_best_orientation
 from tests.synthetic import encode_jpeg, photograph, render_rg_back
 
 
@@ -25,13 +34,46 @@ def test_corners_are_close_to_real_document_area():
     assert area > 1400 * 960 * 0.8
 
 
-def test_outputs_are_compressed_and_original_is_untouched():
+def test_derivatives_are_compressed():
     original = encode_jpeg(photograph(render_rg_back()))
     prepared = prepare_image(original)
-    assert prepared.thumbnail_webp[:4] == b"RIFF"
-    assert prepared.processed_jpeg[:2] == b"\xff\xd8"
-    assert len(prepared.thumbnail_webp) < len(original)
+    thumbnail = encode_thumbnail(prepared.ocr_image)
+    assert thumbnail[:4] == b"RIFF"
+    assert encode_processed(prepared.ocr_image)[:2] == b"\xff\xd8"
+    assert len(thumbnail) < len(original)
     assert prepared.original_mime == "image/jpeg"
+
+
+def test_open_document_is_split_along_long_axis():
+    wide = np.zeros((100, 300, 3), np.uint8)
+    left, right = split_open_document(wide)
+    assert left.shape[:2] == right.shape[:2] == (100, 150)
+    top, bottom = split_open_document(np.zeros((300, 100, 3), np.uint8))
+    assert top.shape[:2] == (150, 100)
+
+
+def test_orientation_search_picks_upright_reading():
+    upright = render_rg_back()
+    upright[:60, :60] = 0
+
+    class OrientationAwareEngine:
+        name = "fake"
+
+        def __init__(self):
+            self.calls = 0
+
+        def read(self, image):
+            self.calls += 1
+            is_upright = image[:8, :8].mean() < 40
+            confidence = 0.98 if is_upright else 0.2
+            return [TextBox("TEXTO", confidence, 0, index * 30, 100, index * 30 + 20) for index in range(6)]
+
+    upside_down = cv2.rotate(upright, cv2.ROTATE_180)
+    engine = OrientationAwareEngine()
+    reading = read_with_best_orientation(engine, upside_down)
+    assert reading.rotation == 180
+    assert np.array_equal(reading.image, upright)
+    assert engine.calls == 3
 
 
 def test_applies_exif_orientation():

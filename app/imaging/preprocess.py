@@ -9,6 +9,7 @@ from pillow_heif import register_heif_opener
 register_heif_opener()
 
 OCR_LONG_SIDE = 2000
+OPEN_DOCUMENT_LONG_SIDE = 3200
 THUMBNAIL_LONG_SIDE = 480
 DETECTION_LONG_SIDE = 800
 MINIMUM_DOCUMENT_AREA_RATIO = 0.2
@@ -22,8 +23,6 @@ class InvalidImageError(ValueError):
 @dataclass(frozen=True)
 class PreparedImage:
     ocr_image: np.ndarray
-    processed_jpeg: bytes
-    thumbnail_webp: bytes
     original_mime: str
     width: int
     height: int
@@ -104,20 +103,34 @@ def encode(image_bgr: np.ndarray, extension: str, quality: int) -> bytes:
     return buffer.tobytes()
 
 
-def prepare_image(content: bytes) -> PreparedImage:
+def prepare_image(content: bytes, long_side: int = OCR_LONG_SIDE) -> PreparedImage:
     pil_image, mime = load_image(content)
     image_bgr = cv2.cvtColor(np.asarray(pil_image), cv2.COLOR_RGB2BGR)
     corners = find_document_corners(image_bgr)
     document = warp_to_corners(image_bgr, corners) if corners is not None else image_bgr
     if document.shape[0] > document.shape[1] * 1.15 and corners is not None:
         document = cv2.rotate(document, cv2.ROTATE_90_CLOCKWISE)
-    ocr_image = enhance_contrast(resize_long_side(document, OCR_LONG_SIDE))
     return PreparedImage(
-        ocr_image=ocr_image,
-        processed_jpeg=encode(ocr_image, ".jpg", 92),
-        thumbnail_webp=encode(resize_long_side(document, THUMBNAIL_LONG_SIDE), ".webp", 82),
+        ocr_image=enhance_contrast(resize_long_side(document, long_side)),
         original_mime=mime,
         width=pil_image.width,
         height=pil_image.height,
         document_detected=corners is not None,
     )
+
+
+def split_open_document(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    height, width = image.shape[:2]
+    if width >= height:
+        middle = width // 2
+        return image[:, :middle], image[:, middle:]
+    middle = height // 2
+    return image[:middle], image[middle:]
+
+
+def encode_processed(image_bgr: np.ndarray) -> bytes:
+    return encode(image_bgr, ".jpg", 92)
+
+
+def encode_thumbnail(image_bgr: np.ndarray) -> bytes:
+    return encode(resize_long_side(image_bgr, THUMBNAIL_LONG_SIDE), ".webp", 82)
