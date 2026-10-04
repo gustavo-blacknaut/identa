@@ -1,0 +1,131 @@
+import argparse
+import getpass
+import json
+import secrets
+from pathlib import Path
+
+from identa.config import OcrSettings, get_settings
+from identa.security.crypto import generate_key
+
+GENERATED_PASSWORD_BYTES = 12
+
+
+def read_password(arguments: argparse.Namespace) -> str:
+    if arguments.generate:
+        return secrets.token_urlsafe(GENERATED_PASSWORD_BYTES) + "-1"
+    password = getpass.getpass("Senha: ")
+    if password != getpass.getpass("Repita a senha: "):
+        raise SystemExit("As senhas não conferem")
+    return password
+
+
+def run_create_user(arguments: argparse.Namespace) -> None:
+    from identa.auth.accounts import create_user
+    from identa.auth.passwords import WeakPasswordError
+    from identa.db.session import build_engine, build_session_factory
+    from identa.services.settings import load_runtime
+
+    settings = get_settings()
+    password = read_password(arguments)
+    factory = build_session_factory(build_engine(settings.database_url))
+    with factory() as session:
+        try:
+            create_user(session, arguments.email, password, load_runtime(session, settings), arguments.role, arguments.name)
+        except WeakPasswordError as error:
+            raise SystemExit(str(error)) from error
+        session.commit()
+    if arguments.generate:
+        output = Path(arguments.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(f"e-mail: {arguments.email}\nsenha: {password}\n", encoding="utf-8")
+        output.chmod(0o600)
+        print(f"Conta '{arguments.email}' salva. Senha gravada em {output}")
+    else:
+        print(f"Conta '{arguments.email}' salva")
+
+
+def run_download_models() -> None:
+    from identa.ocr.devices import DeviceChoice
+    from identa.ocr.rapid_engine import RapidOcrEngine
+
+    model_dir = OcrSettings().ocr_model_dir
+    RapidOcrEngine(DeviceChoice("cpu", None, "download"), model_dir)
+    print(f"Modelos disponíveis em {model_dir}")
+
+
+def run_ocr_status() -> None:
+    from identa.ocr.status import LABELS, ocr_status
+
+    settings = OcrSettings()
+    status = ocr_status(settings.ocr_engine, settings.ocr_device, settings.ocr_model_dir, settings.ocr_languages)
+    for key, label in LABELS.items():
+        if status.get(key) is not None:
+            print(f"{label}: {status[key]}")
+
+
+def run_check_config() -> None:
+    settings = get_settings()
+    database = "SQLite" if settings.is_sqlite else "PostgreSQL"
+    print(f"Configuração válida. Banco: {database}. SMTP: {'configurado' if settings.smtp_configured else 'não configurado'}.")
+
+
+def run_export_openapi(arguments: argparse.Namespace) -> None:
+    from identa.main import openapi_document
+
+    content = json.dumps(openapi_document(), ensure_ascii=False, indent=2) + "\n"
+    if arguments.output == "-":
+        print(content, end="")
+        return
+    Path(arguments.output).write_text(content, encoding="utf-8")
+    print(f"OpenAPI gravado em {arguments.output}")
+
+
+def run_sqlite_to_postgres(arguments: argparse.Namespace) -> None:
+    from identa.db.transfer import TransferError, copy_database
+
+    try:
+        counts = copy_database(arguments.source, arguments.target)
+    except TransferError as error:
+        raise SystemExit(str(error)) from error
+    for item in counts:
+        print(f"{item.table}: {item.copied}")
+    print("Cópia concluída. Aponte IDENTA_DATABASE_URL para o PostgreSQL e mantenha o diretório de armazenamento.")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="identa")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("generate-key", help="Gera uma chave para IDENTA_ENCRYPTION_KEY ou IDENTA_SECRET_KEY")
+    user_parser = commands.add_parser("create-user", help="Cria uma conta ou redefine a senha de uma existente")
+    user_parser.add_argument("email")
+    user_parser.add_argument("--name", default="")
+    user_parser.add_argument("--role", choices=("admin", "reviewer", "reader"), default="admin")
+    user_parser.add_argument("--generate", action="store_true", help="Gera uma senha aleatória e grava em arquivo")
+    user_parser.add_argument("--output", default="data/credenciais.txt")
+    commands.add_parser("download-models", help="Baixa os modelos de OCR para o diretório configurado")
+    commands.add_parser("ocr-status", help="Mostra o dispositivo de OCR escolhido, os providers e o adaptador de vídeo")
+    commands.add_parser("check-config", help="Valida as variáveis de ambiente")
+    openapi_parser = commands.add_parser("export-openapi", help="Grava o esquema OpenAPI da API")
+    openapi_parser.add_argument("--output", default="-")
+    transfer_parser = commands.add_parser("sqlite-to-postgres", help="Copia todos os dados de um SQLite para um PostgreSQL vazio")
+    transfer_parser.add_argument("--source", required=True, help="sqlite:///caminho/identa.db")
+    transfer_parser.add_argument("--target", required=True, help="postgresql://usuario:senha@host:5432/banco")
+    arguments = parser.parse_args()
+    if arguments.command == "generate-key":
+        print(generate_key())
+    elif arguments.command == "create-user":
+        run_create_user(arguments)
+    elif arguments.command == "download-models":
+        run_download_models()
+    elif arguments.command == "ocr-status":
+        run_ocr_status()
+    elif arguments.command == "check-config":
+        run_check_config()
+    elif arguments.command == "export-openapi":
+        run_export_openapi(arguments)
+    elif arguments.command == "sqlite-to-postgres":
+        run_sqlite_to_postgres(arguments)
+
+
+if __name__ == "__main__":
+    main()
