@@ -33,7 +33,7 @@ def test_full_flow_upload_review_and_delete(client):
     with client.app_state.session_factory() as session:
         document = session.query(Document).one()
         assert document.status == "pending_review"
-        assert len(document.images) == 2
+        assert len([image for image in document.images if image.kind == "page"]) == 2
         image_id = document.images[0].id
 
     thumbnail = client.get(f"/imagens/{image_id}/miniatura")
@@ -104,4 +104,28 @@ def test_reprocess_reruns_ocr_on_stored_original(client):
         document = session.query(Document).one()
         assert document.status == "pending_review"
         assert document.full_name == "MARIANA OLIVEIRA DOS SANTOS"
-        assert len(document.images) == 2
+        assert len([image for image in document.images if image.kind == "page"]) == 2
+
+
+def test_open_document_upload_uses_single_photo(client):
+    login(client)
+    image = encode_jpeg(photograph(render_rg_back()))
+    response = client.post(
+        "/documentos",
+        data={"doc_type": "rg"},
+        files={"open_document": ("aberto.jpg", image, "image/jpeg")},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    with client.app_state.session_factory() as session:
+        document = session.query(Document).one()
+        pages = [image for image in document.images if image.kind == "page"]
+        assert [page.side for page in pages] == ["open"]
+        assert document.full_name == "MARIANA OLIVEIRA DOS SANTOS"
+
+
+def test_upload_without_images_shows_error(client):
+    login(client)
+    response = client.post("/documentos", data={"doc_type": "rg"})
+    assert response.status_code == 400
+    assert "pelo menos uma foto" in response.text

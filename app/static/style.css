@@ -183,3 +183,15 @@ select { border-left-width: 1px; }
 .login { max-width: 380px; margin: 40px auto; }
 .topbar nav form { margin: 0; }
 .document-actions { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+
+.alert-warn { color: var(--medium); background: var(--medium-bg); }
+.mode { border: 0; padding: 0; margin: 4px 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.mode legend { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.mode label { display: flex; gap: 8px; align-items: center; }
+.mode input { width: auto; }
+.sides-single { grid-template-columns: 1fr; }
+.crops { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.crops img { background: #fff; object-fit: contain; max-height: 160px; }
+.swap { margin: -6px 0 14px; font-size: 14px; }
+.extras { margin: 6px 0 14px; }
+.extras summary { cursor: pointer; font-weight: 600; margin-bottom: 12px; }

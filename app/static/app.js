@@ -22,3 +22,22 @@ document.querySelectorAll("form[data-confirm]").forEach((form) => {
     if (!window.confirm(form.dataset.confirm)) event.preventDefault();
   });
 });
+
+document.querySelectorAll("input[name=mode]").forEach((radio) => {
+  radio.addEventListener("change", () => {
+    document.querySelectorAll("[data-mode]").forEach((group) => {
+      const active = group.dataset.mode === radio.value;
+      group.hidden = !active;
+      group.querySelectorAll("input[type=file]").forEach((input) => {
+        if (!active) input.value = "";
+      });
+    });
+  });
+});
+
+document.querySelectorAll("[data-swap]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const [first, second] = button.dataset.swap.split(",").map((name) => document.querySelector(`[data-field="${name}"]`));
+    [first.value, second.value] = [second.value, first.value];
+  });
+});

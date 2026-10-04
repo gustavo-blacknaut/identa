@@ -1,5 +1,26 @@
 {% extends "base.html" %}
 {% block title %}{{ parser.display_name }} · Green OCR{% endblock %}
+{% macro field_input(definition) %}
+  {% set value = values.get(definition.name, "") %}
+  {% set level = confidence_level(confidence.get(definition.name)) if value else "unknown" %}
+  {% set field_issues = issues.get(definition.name, []) %}
+  <label class="field field-{{ level }}{% if field_issues %} field-invalid{% endif %}">
+    <span>
+      {{ definition.label }}
+      {% if confidence.get(definition.name) is not none and value %}
+      <small class="confidence confidence-{{ level }}">{{ "%.0f" | format(confidence[definition.name] * 100) }}%</small>
+      {% endif %}
+    </span>
+    {% if definition.kind == "multiline" %}
+    <textarea name="{{ definition.name }}" rows="3" class="mono">{{ value }}</textarea>
+    {% else %}
+    <input name="{{ definition.name }}" value="{{ value }}" data-field="{{ definition.name }}"
+           {% if definition.kind == "date" %}placeholder="dd/mm/aaaa" inputmode="numeric"{% endif %}
+           {% if definition.kind == "cpf" %}placeholder="000.000.000-00" inputmode="numeric" class="mono"{% endif %}>
+    {% endif %}
+    {% for message in field_issues %}<em class="issue">{{ message }}</em>{% endfor %}
+  </label>
+{% endmacro %}
 {% block content %}
 <section class="card">
   <div class="card-header">
@@ -8,20 +29,32 @@
     {% else %}<span class="status status-pending">Aguardando revisão</span>{% endif %}
   </div>
   {% if saved %}<p class="alert alert-ok">Dados salvos.</p>{% endif %}
+  {% if failed %}<p class="alert alert-error">Não foi possível reprocessar. Tente novamente.</p>{% endif %}
+  {% if "cpf_corrected" in notes %}<p class="alert alert-warn">O CPF lido não passava no dígito verificador. Ele foi relido e corrigido automaticamente; confira antes de salvar.</p>{% endif %}
+  {% if "cpf_unverified" in notes %}<p class="alert alert-error">O CPF lido não passa no dígito verificador e não foi possível corrigir automaticamente.</p>{% endif %}
 
   <div class="review">
     <div class="images">
-      {% for image in document.images %}
+      {% for image in pages %}
       <figure>
         <a href="/imagens/{{ image.id }}/processada" target="_blank" rel="noopener">
-          <img src="/imagens/{{ image.id }}/miniatura" alt="{{ 'Frente' if image.side == 'front' else 'Verso' }} do documento">
+          <img src="/imagens/{{ image.id }}/miniatura" alt="{{ side_labels[image.side] }}">
         </a>
-        <figcaption>
-          {{ "Frente" if image.side == "front" else "Verso" }} ·
-          <a href="/imagens/{{ image.id }}/original" target="_blank" rel="noopener">original</a>
-        </figcaption>
+        <figcaption>{{ side_labels[image.side] }} · <a href="/imagens/{{ image.id }}/original" target="_blank" rel="noopener">original</a></figcaption>
       </figure>
       {% endfor %}
+      {% if crops %}
+      <div class="crops">
+        {% for image in crops %}
+        <figure>
+          <a href="/imagens/{{ image.id }}/original" target="_blank" rel="noopener">
+            <img src="/imagens/{{ image.id }}/miniatura" alt="{{ kind_labels[image.kind] }}">
+          </a>
+          <figcaption>{{ kind_labels[image.kind] }}</figcaption>
+        </figure>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
 
     <form class="fields" method="post" action="/documentos/{{ document.id }}">
@@ -31,26 +64,18 @@
         <span class="confidence confidence-low">baixa</span>
         <span class="confidence confidence-unknown">não encontrado</span>
       </div>
-      {% for definition in parser.field_definitions %}
-      {% set level = confidence_level(confidence.get(definition.name)) if values.get(definition.name) else "unknown" %}
-      {% set field_issues = issues.get(definition.name, []) %}
-      <label class="field field-{{ level }}{% if field_issues %} field-invalid{% endif %}">
-        <span>
-          {{ definition.label }}
-          {% if confidence.get(definition.name) is not none and values.get(definition.name) %}
-          <small class="confidence confidence-{{ level }}">{{ "%.0f" | format(confidence[definition.name] * 100) }}%</small>
-          {% endif %}
-        </span>
-        {% if definition.kind == "multiline" %}
-        <textarea name="{{ definition.name }}" rows="3" class="mono">{{ values.get(definition.name, "") }}</textarea>
-        {% else %}
-        <input name="{{ definition.name }}" value="{{ values.get(definition.name, '') }}"
-               {% if definition.kind == "date" %}placeholder="dd/mm/aaaa" inputmode="numeric"{% endif %}
-               {% if definition.kind == "cpf" %}placeholder="000.000.000-00" inputmode="numeric" class="mono"{% endif %}>
+      {% for definition in main_fields %}
+        {{ field_input(definition) }}
+        {% if definition.kind == "parent" and loop.nextitem and loop.nextitem.kind == "parent" %}
+        <button class="link swap" type="button" data-swap="{{ definition.name }},{{ loop.nextitem.name }}">⇅ Trocar pai e mãe</button>
         {% endif %}
-        {% for message in field_issues %}<em class="issue">{{ message }}</em>{% endfor %}
-      </label>
       {% endfor %}
+      {% if extra_fields %}
+      <details class="extras" {% if extra_found %}open{% endif %}>
+        <summary>Outras informações da carteira{% if extra_found %} ({{ extra_found }} encontradas){% endif %}</summary>
+        {% for definition in extra_fields %}{{ field_input(definition) }}{% endfor %}
+      </details>
+      {% endif %}
       <div class="actions">
         <button class="button" type="submit">Confirmar e salvar</button>
       </div>

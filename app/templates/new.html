@@ -14,20 +14,34 @@
       </select>
     </label>
 
-    <div class="sides">
-      {% for side, label, required in (("front", "Frente", true), ("back", "Verso", false)) %}
+    <fieldset class="mode">
+      <legend>Como é a foto?</legend>
+      <label><input type="radio" name="mode" value="separate" checked> Frente e verso em fotos separadas</label>
+      <label><input type="radio" name="mode" value="open"> Documento aberto (frente e verso na mesma foto)</label>
+    </fieldset>
+
+    <div class="sides" data-mode="separate">
+      {% for side, label in (("front", "Frente"), ("back", "Verso")) %}
       <label class="dropzone" data-preview>
-        <input type="file" name="{{ side }}" accept="image/*" capture="environment" {% if required %}required{% endif %}>
+        <input type="file" name="{{ side }}" accept="image/*" capture="environment">
         <img alt="" hidden>
         <span class="dropzone-text"><strong>{{ label }}</strong><br>Tire uma foto ou escolha um arquivo</span>
       </label>
       {% endfor %}
     </div>
 
-    <p class="hint">Dica: fotografe o documento inteiro sobre uma superfície escura, sem reflexo e sem cortar as bordas. O original é guardado criptografado; o processamento é feito numa cópia.</p>
+    <div class="sides sides-single" data-mode="open" hidden>
+      <label class="dropzone" data-preview>
+        <input type="file" name="open_document" accept="image/*" capture="environment">
+        <img alt="" hidden>
+        <span class="dropzone-text"><strong>Documento aberto</strong><br>Uma foto com as duas partes, desdobrado</span>
+      </label>
+    </div>
+
+    <p class="hint">Fotografe o documento inteiro sobre uma superfície escura, sem reflexo e sem cortar as bordas. Pode ser em pé ou deitado: a orientação é corrigida automaticamente. O original é guardado criptografado.</p>
 
     <button class="button" type="submit">Extrair dados</button>
-    <p class="processing" hidden>Processando… o primeiro envio pode levar mais tempo enquanto o motor de OCR é carregado.</p>
+    <p class="processing" hidden>Processando… pode levar alguns segundos.</p>
   </form>
 </section>
 {% endblock %}

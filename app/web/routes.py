@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -6,12 +7,11 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import Document, DocumentImage, DocumentStatus, ImageSide, Person
+from app.db.models import Document, DocumentImage, DocumentStatus, ImageKind, ImageSide, Person
 from app.imaging.preprocess import InvalidImageError
 from app.ocr.base import OcrEngine
 from app.parsers.registry import available_parsers, get_parser
 from app.services.documents import (
-    DOCUMENT_COLUMNS,
     UploadedSide,
     delete_document,
     delete_person,
@@ -25,10 +25,15 @@ from app.web.deps import get_engine, get_session, get_store
 from app.web.templating import templates
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 SessionDep = Annotated[Session, Depends(get_session)]
 StoreDep = Annotated[EncryptedFileStore, Depends(get_store)]
 EngineDep = Annotated[OcrEngine, Depends(get_engine)]
+SIDE_LABELS = {"front": "Frente", "back": "Verso", "open": "Documento aberto"}
+KIND_LABELS = {"portrait": "Foto", "fingerprint": "Polegar", "signature": "Assinatura"}
+NO_IMAGE_MESSAGE = "Envie pelo menos uma foto do documento."
+PROCESSING_FAILED_MESSAGE = "Não foi possível processar a imagem. Tente novamente ou envie outra foto."
 
 
 def current_user_id(request: Request) -> int | None:
@@ -69,18 +74,26 @@ async def upload_document(
     store: StoreDep,
     engine: EngineDep,
     doc_type: Annotated[str, Form()],
-    front: Annotated[UploadFile, File()],
+    front: Annotated[UploadFile | None, File()] = None,
     back: Annotated[UploadFile | None, File()] = None,
+    open_document: Annotated[UploadFile | None, File()] = None,
 ):
     max_bytes = request.app.state.settings.max_upload_mb * 1024 * 1024
     sides = []
-    for side, upload in ((ImageSide.FRONT, front), (ImageSide.BACK, back)):
+    uploads = ((ImageSide.FRONT, front), (ImageSide.BACK, back))
+    if open_document and open_document.filename:
+        uploads = ((ImageSide.OPEN, open_document),)
+    for side, upload in uploads:
         if upload is None or not upload.filename:
             continue
         content = await upload.read(max_bytes + 1)
         if len(content) > max_bytes:
             raise HTTPException(413, "Imagem maior que o limite permitido")
         sides.append(UploadedSide(side, content))
+    if not sides:
+        return templates.TemplateResponse(
+            request, "new.html", {"parsers": available_parsers(), "error": NO_IMAGE_MESSAGE}, status_code=400
+        )
     try:
         get_parser(doc_type)
         document = await run_in_threadpool(process_document, session, store, engine, doc_type, sides, current_user_id(request))
@@ -89,6 +102,14 @@ async def upload_document(
     except InvalidImageError as error:
         return templates.TemplateResponse(
             request, "new.html", {"parsers": available_parsers(), "error": str(error)}, status_code=400
+        )
+    except Exception:
+        logger.exception("Falha ao processar documento")
+        return templates.TemplateResponse(
+            request,
+            "new.html",
+            {"parsers": available_parsers(), "error": PROCESSING_FAILED_MESSAGE},
+            status_code=500,
         )
     return RedirectResponse(f"/documentos/{document.id}", status_code=303)
 
@@ -101,16 +122,27 @@ def show_document(request: Request, document_id: int, session: SessionDep):
     issues_by_field: dict[str, list[str]] = {}
     for issue in extra.get("issues", []):
         issues_by_field.setdefault(issue["field"], []).append(issue["message"])
+    values = document_values(document)
+    extra_fields = [definition for definition in parser.field_definitions if definition.kind == "extra"]
     return templates.TemplateResponse(
         request,
         "document.html",
         {
             "document": document,
             "parser": parser,
-            "values": document_values(document),
+            "values": values,
             "confidence": document.field_confidence or {},
             "issues": issues_by_field,
+            "notes": extra.get("notes", []),
             "saved": request.query_params.get("salvo") == "1",
+            "failed": request.query_params.get("erro") == "1",
+            "main_fields": [definition for definition in parser.field_definitions if definition.kind != "extra"],
+            "extra_fields": extra_fields,
+            "extra_found": sum(1 for definition in extra_fields if values.get(definition.name)),
+            "pages": [image for image in document.images if image.kind == ImageKind.PAGE],
+            "crops": [image for image in document.images if image.kind != ImageKind.PAGE],
+            "side_labels": SIDE_LABELS,
+            "kind_labels": KIND_LABELS,
         },
     )
 
@@ -119,7 +151,7 @@ def show_document(request: Request, document_id: int, session: SessionDep):
 async def save_document(request: Request, document_id: int, session: SessionDep):
     document = load_document(session, document_id)
     form = await request.form()
-    values = {name: str(form[name]) for name in DOCUMENT_COLUMNS if name in form}
+    values = {name: str(form[name]) for name in get_parser(document.doc_type).field_names if name in form}
     review_document(session, document, values, current_user_id(request))
     return RedirectResponse(f"/documentos/{document.id}?salvo=1", status_code=303)
 
@@ -156,5 +188,10 @@ def image(image_id: int, variant: str, session: SessionDep, store: StoreDep):
 @router.post("/documentos/{document_id}/reprocessar")
 async def reprocess(request: Request, document_id: int, session: SessionDep, store: StoreDep, engine: EngineDep):
     document = load_document(session, document_id)
-    await run_in_threadpool(reprocess_document, session, store, engine, document, current_user_id(request))
+    try:
+        await run_in_threadpool(reprocess_document, session, store, engine, document, current_user_id(request))
+    except Exception:
+        logger.exception("Falha ao reprocessar documento %s", document_id)
+        session.rollback()
+        return RedirectResponse(f"/documentos/{document_id}?erro=1", status_code=303)
     return RedirectResponse(f"/documentos/{document.id}", status_code=303)
