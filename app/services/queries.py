@@ -135,6 +135,8 @@ class AuditEntry:
     action: str
     entity: str
     entity_id: int | None
+    details: str | None
+    ip_address: str | None
 
 
 def list_audit(session: Session, filters: ListFilters, action: str = "", entity: str = "") -> Page[AuditEntry]:
@@ -150,7 +152,8 @@ def list_audit(session: Session, filters: ListFilters, action: str = "", entity:
     total = session.scalar(select(func.count()).select_from(statement.order_by(None).subquery())) or 0
     rows = session.execute(statement.limit(filters.limit).offset(filters.offset)).all()
     entries = [
-        AuditEntry(log.id, log.occurred_at, username, log.action, log.entity, log.entity_id) for log, username in rows
+        AuditEntry(log.id, log.occurred_at, username, log.action, log.entity, log.entity_id, log.details, log.ip_address)
+        for log, username in rows
     ]
     return Page(entries, total)
 
