@@ -1,18 +1,109 @@
+name: identa
+
+x-api-env: &api-env
+  IDENTA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-identa}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-identa}
+  IDENTA_STORAGE_DIR: /data/storage
+  IDENTA_OCR_MODEL_DIR: /opt/identa/models
+  IDENTA_OCR_DEVICE: cpu
+
 services:
-  app:
-    build: .
-    env_file: .env
-    ports:
-      - "${GREEN_OCR_BIND:-127.0.0.1}:${GREEN_OCR_PORT:-8090}:8000"
+  postgres:
+    image: postgres:18.6-alpine3.24
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-identa}
+      POSTGRES_USER: ${POSTGRES_USER:-identa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
     volumes:
-      - ./data:/app/data
-      - ./storage:/app/storage
+      - postgres-data:/var/lib/postgresql
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
-  tests:
-    build: .
+  api:
+    build:
+      context: apps/api
+      target: runtime
+    env_file: .env
+    environment:
+      <<: *api-env
+    volumes:
+      - storage:/data/storage
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: apps/web
+      args:
+        IDENTA_API_URL: http://api:8000
+    environment:
+      IDENTA_API_URL: http://api:8000
+    ports:
+      - "${IDENTA_BIND:-127.0.0.1}:${IDENTA_PORT:-8090}:3000"
+    networks: [internal]
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/entrar').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    profiles: ["dev"]
+    ports:
+      - "127.0.0.1:${MAILPIT_PORT:-8025}:8025"
+      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
+    networks: [internal]
+    restart: unless-stopped
+
+  postgres-test:
+    image: postgres:18.6-alpine3.24
     profiles: ["tests"]
     environment:
-      GREEN_OCR_ENCRYPTION_KEY: ""
-    command: ["sh", "-c", "ruff check . && pytest"]
+      POSTGRES_DB: identa_test
+      POSTGRES_USER: identa
+      POSTGRES_PASSWORD: identa-test
+    tmpfs: [/var/lib/postgresql]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identa -d identa_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
+  tests:
+    build:
+      context: apps/api
+      target: test
+    profiles: ["tests"]
+    environment:
+      IDENTA_TEST_DATABASE_URL: postgresql://identa:identa-test@postgres-test:5432/identa_test
+    networks: [internal]
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    command: ["sh", "-c", "ruff check . && pytest -p no:cacheprovider && IDENTA_TEST_DATABASE_URL= pytest -p no:cacheprovider"]
+
+networks:
+  internal: {}
+
+volumes:
+  postgres-data: {}
+  storage: {}

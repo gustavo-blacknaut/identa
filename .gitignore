@@ -28,7 +28,10 @@ htmlcov/
 Thumbs.db
 
 /docs/screenshots/qa/
+/docs/screenshots/frames/
 /.runtime/
 /.venv-gpu/
 /.venv-cpu/
 /models/
+/.uv/
+/apps/api/models/
