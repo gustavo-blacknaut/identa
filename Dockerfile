@@ -2,17 +2,22 @@ FROM python:3.12-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libglib2.0-0 libgl1 fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY pyproject.toml ./
-RUN mkdir app && touch app/__init__.py && pip install ".[dev]" && rm -rf app
+RUN mkdir app && touch app/__init__.py && pip install ".[ocr,dev]" && rm -rf app
 
 COPY . .
 RUN pip install --no-deps -e .
 
-RUN useradd --create-home --uid 1000 greenocr && mkdir -p data storage && chown -R greenocr /app
+RUN useradd --create-home --uid 1000 greenocr && mkdir -p data storage /home/greenocr/.paddlex \
+    && chown -R greenocr /app /home/greenocr
 USER greenocr
 
 EXPOSE 8000
