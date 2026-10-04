@@ -117,6 +117,16 @@ def detect_state(boxes: list[TextBox]) -> str | None:
 class RgParser(DocumentParser):
     doc_type = "rg"
     display_name = "RG (Carteira de Identidade)"
+    keywords = {
+        "CARTEIRA DE IDENTIDADE": 3,
+        "REGISTRO GERAL": 3,
+        "INSTITUTO DE IDENTIFICACAO": 2,
+        "LEI N 7.116": 2,
+        "POLEGAR DIREITO": 1,
+        "FILIACAO": 1,
+        "NATURALIDADE": 1,
+        "DOC. ORIGEM": 1,
+    }
     field_definitions = (
         FieldDefinition("full_name", "Nome completo"),
         FieldDefinition("rg_number", "Número do RG"),

@@ -66,6 +66,17 @@ def birthplace_from(field: ExtractedField | None) -> ExtractedField | None:
 class CnhParser(DocumentParser):
     doc_type = "cnh"
     display_name = "CNH (Carteira de Habilitação)"
+    keywords = {
+        "CARTEIRA NACIONAL DE HABILITACAO": 5,
+        "DEPARTAMENTO NACIONAL DE TRANSITO": 3,
+        "SECRETARIA NACIONAL DE TRANSITO": 3,
+        "PERMISSAO": 2,
+        "CAT. HAB": 2,
+        "CAT HAB": 2,
+        "1A HABILITACAO": 2,
+        "N REGISTRO": 1,
+        "DETRAN": 1,
+    }
     field_definitions = (
         FieldDefinition("full_name", "Nome completo"),
         FieldDefinition("cpf", "CPF", "cpf"),

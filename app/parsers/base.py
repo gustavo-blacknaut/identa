@@ -1,3 +1,4 @@
+import unicodedata
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
 
@@ -57,12 +58,17 @@ class DocumentParser(ABC):
     display_name: str
     field_definitions: tuple[FieldDefinition, ...]
     rules: DocumentRules
+    keywords: dict[str, float] = {}
 
     @abstractmethod
     def extract(self, front: list[TextBox], back: list[TextBox]) -> dict[str, ExtractedField]: ...
 
     def parse(self, front: list[TextBox], back: list[TextBox]) -> ExtractionResult:
-        fields = {name: value for name, value in self.extract(front, back).items() if value and value.value}
+        fields = {
+            name: replace(value, value=strip_accents(value.value))
+            for name, value in self.extract(front, back).items()
+            if value and value.value
+        }
         result = ExtractionResult(self.doc_type, fields, raw_text=build_raw_text(front, back))
         result.issues = self.validate(result.values())
         return result
@@ -84,3 +90,8 @@ def build_raw_text(*sides: list[TextBox]) -> str:
         ordered = sorted(boxes, key=lambda box: (round(box.center_y / max(box.height, 1)), box.x0))
         blocks.append("\n".join(box.text for box in ordered))
     return "\n\n".join(block for block in blocks if block)
+
+
+def strip_accents(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text)
+    return unicodedata.normalize("NFC", "".join(char for char in decomposed if not unicodedata.combining(char)))

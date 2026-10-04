@@ -21,6 +21,12 @@ ALL_LABELS = tuple(variant for variants in LABELS.values() for variant in varian
 class CpfParser(DocumentParser):
     doc_type = "cpf"
     display_name = "Cartão CPF"
+    keywords = {
+        "CADASTRO DE PESSOAS FISICAS": 5,
+        "RECEITA FEDERAL": 3,
+        "NUMERO DE INSCRICAO": 2,
+        "MINISTERIO DA FAZENDA": 1,
+    }
     field_definitions = (
         FieldDefinition("full_name", "Nome completo"),
         FieldDefinition("cpf", "CPF", "cpf"),
