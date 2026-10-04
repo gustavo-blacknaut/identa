@@ -1,16 +1,30 @@
+import hashlib
 from dataclasses import dataclass
 from datetime import date
 
+import cv2
+import numpy as np
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.base import utc_now
-from app.db.models import AuditLog, Document, DocumentImage, DocumentStatus, ImageSide, Person
-from app.imaging.preprocess import prepare_image
+from app.db.models import AuditLog, Document, DocumentImage, DocumentStatus, ImageKind, ImageSide, Person
+from app.imaging.crops import find_fingerprint, find_portrait, find_signature
+from app.imaging.preprocess import (
+    OPEN_DOCUMENT_LONG_SIDE,
+    encode_processed,
+    encode_thumbnail,
+    load_image,
+    prepare_image,
+    split_open_document,
+)
 from app.ocr.base import OcrEngine, TextBox
+from app.ocr.orientation import read_with_best_orientation
+from app.parsers.base import ExtractedField, side_of
+from app.parsers.common import repair_cpf_candidates
 from app.parsers.registry import get_parser
 from app.storage.encrypted_store import EncryptedFileStore
-from app.validators.cpf import normalize_cpf, only_digits
+from app.validators.cpf import format_cpf, is_valid_cpf, normalize_cpf, only_digits
 from app.validators.dates import format_brazilian_date, parse_brazilian_date
 
 DOCUMENT_COLUMNS = (
@@ -19,12 +33,22 @@ DOCUMENT_COLUMNS = (
 )
 DATE_COLUMNS = {"birth_date", "issue_date", "valid_until", "first_license_date"}
 PERSON_COLUMNS = ("full_name", "birth_date", "mother_name", "father_name", "birthplace")
+CPF_CROP_PADDING = 0.6
+CPF_CROP_SCALE = 2.5
+CORRECTED_CONFIDENCE_FACTOR = 0.85
 
 
 @dataclass(frozen=True)
 class UploadedSide:
     side: ImageSide
     content: bytes
+
+
+@dataclass(frozen=True)
+class SideReading:
+    side: ImageSide
+    image: np.ndarray
+    boxes: list[TextBox]
 
 
 def to_column_value(name: str, value: str | None):
@@ -45,30 +69,160 @@ def to_display_value(name: str, value) -> str:
     if isinstance(value, date):
         return format_brazilian_date(value)
     if name == "cpf" and len(value) == 11:
-        return f"{value[:3]}.{value[3:6]}.{value[6:9]}-{value[9:]}"
+        return format_cpf(value)
     return str(value)
 
 
 def apply_values(document: Document, values: dict[str, str]) -> None:
-    invalid_raw = {}
     extra = dict(document.extra_fields or {})
+    unparsed = dict(extra.get("unparsed_values", {}))
+    optional = dict(extra.get("values", {}))
     for name, raw in values.items():
         if name in DOCUMENT_COLUMNS:
             converted = to_column_value(name, raw)
             setattr(document, name, converted)
+            unparsed.pop(name, None)
             if raw and converted is None:
-                invalid_raw[name] = raw
+                unparsed[name] = raw
         else:
-            extra[name] = raw
-    extra["unparsed_values"] = invalid_raw
+            optional[name] = (raw or "").strip()
+    extra["unparsed_values"] = unparsed
+    extra["values"] = {name: value for name, value in optional.items() if value}
     document.extra_fields = extra
 
 
 def document_values(document: Document) -> dict[str, str]:
     values = {name: to_display_value(name, getattr(document, name)) for name in DOCUMENT_COLUMNS}
-    for name, raw in (document.extra_fields or {}).get("unparsed_values", {}).items():
-        values[name] = raw
+    extra = document.extra_fields or {}
+    values.update(extra.get("values", {}))
+    values.update(extra.get("unparsed_values", {}))
     return values
+
+
+def read_upload(engine: OcrEngine, uploaded: UploadedSide) -> list[SideReading]:
+    if uploaded.side == ImageSide.OPEN:
+        prepared = prepare_image(uploaded.content, long_side=OPEN_DOCUMENT_LONG_SIDE)
+        halves = [read_with_best_orientation(engine, half) for half in split_open_document(prepared.ocr_image)]
+        if find_portrait(halves[1].image) is not None and find_portrait(halves[0].image) is None:
+            halves.reverse()
+        return [
+            SideReading(ImageSide.FRONT, halves[0].image, halves[0].boxes),
+            SideReading(ImageSide.BACK, halves[1].image, halves[1].boxes),
+        ]
+    prepared = prepare_image(uploaded.content)
+    reading = read_with_best_orientation(engine, prepared.ocr_image)
+    return [SideReading(uploaded.side, reading.image, reading.boxes)]
+
+
+def side_by_side(images: list[np.ndarray]) -> np.ndarray:
+    height = min(image.shape[0] for image in images)
+    resized = [cv2.resize(image, (int(image.shape[1] * height / image.shape[0]), height)) for image in images]
+    return np.hstack(resized)
+
+
+def page_preview(readings: list[SideReading]) -> np.ndarray:
+    return readings[0].image if len(readings) == 1 else side_by_side([reading.image for reading in readings])
+
+
+def save_crop(store: EncryptedFileStore, document: Document, side: str, kind: ImageKind, crop: np.ndarray | None) -> None:
+    if crop is None:
+        return
+    content = encode_processed(crop)
+    document.images.append(
+        DocumentImage(
+            side=side,
+            kind=kind,
+            original_path=store.save("processed", content).relative_path,
+            thumbnail_path=store.save("thumbnails", encode_thumbnail(crop)).relative_path,
+            original_mime="image/jpeg",
+            sha256=hashlib.sha256(content).hexdigest(),
+            width=crop.shape[1],
+            height=crop.shape[0],
+        )
+    )
+
+
+def save_crops(store: EncryptedFileStore, document: Document, readings: list[SideReading]) -> None:
+    portrait_saved = False
+    for reading in readings:
+        if not portrait_saved:
+            portrait = find_portrait(reading.image)
+            save_crop(store, document, reading.side, ImageKind.PORTRAIT, portrait)
+            portrait_saved = portrait is not None
+        save_crop(store, document, reading.side, ImageKind.SIGNATURE, find_signature(reading.image, reading.boxes))
+        save_crop(store, document, reading.side, ImageKind.FINGERPRINT, find_fingerprint(reading.image, reading.boxes))
+
+
+def unique_valid_cpf(texts: list[str]) -> str | None:
+    candidates = {candidate for text in texts for candidate in repair_cpf_candidates(text)}
+    return candidates.pop() if len(candidates) == 1 else None
+
+
+def reread_region(engine: OcrEngine, image: np.ndarray, box: TextBox) -> list[str]:
+    padding_x = (box.x1 - box.x0) * CPF_CROP_PADDING
+    padding_y = box.height * CPF_CROP_PADDING
+    height, width = image.shape[:2]
+    x0, y0 = max(int(box.x0 - padding_x), 0), max(int(box.y0 - padding_y), 0)
+    x1, y1 = min(int(box.x1 + padding_x), width), min(int(box.y1 + padding_y), height)
+    if x1 - x0 < 10 or y1 - y0 < 10:
+        return []
+    crop = cv2.resize(image[y0:y1, x0:x1], None, fx=CPF_CROP_SCALE, fy=CPF_CROP_SCALE, interpolation=cv2.INTER_CUBIC)
+    sharpened = cv2.addWeighted(crop, 1.6, cv2.GaussianBlur(crop, (0, 0), 3), -0.6, 0)
+    texts = []
+    for variant in (crop, sharpened):
+        boxes = engine.read(variant)
+        texts.extend(box.text for box in boxes)
+        texts.append(" ".join(box.text for box in sorted(boxes, key=lambda item: item.x0)))
+    return texts
+
+
+def verify_cpf(engine: OcrEngine, readings: list[SideReading], fields: dict[str, ExtractedField]) -> str | None:
+    current = fields.get("cpf")
+    if current and is_valid_cpf(current.value):
+        return None
+    texts = [current.box.text] if current and current.box else []
+    repaired = unique_valid_cpf(texts)
+    if repaired is None and current and current.box:
+        side_index, box = side_of(current.box)
+        if side_index < len(readings):
+            repaired = unique_valid_cpf(reread_region(engine, readings[side_index].image, box))
+    if repaired is None and current is None:
+        repaired = unique_valid_cpf([box.text for reading in readings for box in reading.boxes])
+    if repaired is None:
+        return "cpf_unverified" if current else None
+    confidence = (current.confidence or 1.0) * CORRECTED_CONFIDENCE_FACTOR if current else 0.7
+    fields["cpf"] = ExtractedField(format_cpf(repaired), confidence, current.box if current else None)
+    return "cpf_corrected"
+
+
+def apply_extraction(document: Document, engine: OcrEngine, readings: list[SideReading]) -> None:
+    front = [box for reading in readings if reading.side == ImageSide.FRONT for box in reading.boxes]
+    back = [box for reading in readings if reading.side == ImageSide.BACK for box in reading.boxes]
+    ordered = sorted(readings, key=lambda reading: reading.side != ImageSide.FRONT)
+    parser = get_parser(document.doc_type)
+    result = parser.parse(front, back)
+    cpf_status = verify_cpf(engine, ordered, result.fields)
+    if cpf_status == "cpf_corrected":
+        result.issues = parser.validate(result.values())
+    document.extra_fields = {}
+    for name in DOCUMENT_COLUMNS:
+        setattr(document, name, None)
+    apply_values(document, result.values())
+    document.field_confidence = {name: field.confidence for name, field in result.fields.items()}
+    document.extra_fields = {
+        **document.extra_fields,
+        "extracted": result.values(),
+        "issues": result.issues,
+        "notes": [cpf_status] if cpf_status else [],
+    }
+    all_boxes = front + back
+    document.ocr_confidence_avg = sum(box.confidence for box in all_boxes) / len(all_boxes) if all_boxes else None
+    document.raw_text = result.raw_text
+    document.ocr_engine = engine.name
+    document.processed_at = utc_now()
+    document.status = DocumentStatus.PENDING_REVIEW
+    document.reviewed_manually = False
+    document.reviewed_at = None
 
 
 def process_document(
@@ -79,25 +233,30 @@ def process_document(
     sides: list[UploadedSide],
     user_id: int | None = None,
 ) -> Document:
+    get_parser(doc_type)
     document = Document(doc_type=doc_type, ocr_engine=engine.name, created_by=user_id, field_confidence={}, extra_fields={})
-    boxes_by_side: dict[ImageSide, list[TextBox]] = {ImageSide.FRONT: [], ImageSide.BACK: []}
+    readings: list[SideReading] = []
     for uploaded in sides:
-        prepared = prepare_image(uploaded.content)
+        prepared_readings = read_upload(engine, uploaded)
+        readings.extend(prepared_readings)
         original = store.save("originals", uploaded.content)
+        preview = page_preview(prepared_readings)
+        pil_size = prepare_dimensions(uploaded.content)
         document.images.append(
             DocumentImage(
                 side=uploaded.side,
+                kind=ImageKind.PAGE,
                 original_path=original.relative_path,
-                processed_path=store.save("processed", prepared.processed_jpeg).relative_path,
-                thumbnail_path=store.save("thumbnails", prepared.thumbnail_webp).relative_path,
-                original_mime=prepared.original_mime,
+                processed_path=store.save("processed", encode_processed(preview)).relative_path,
+                thumbnail_path=store.save("thumbnails", encode_thumbnail(preview)).relative_path,
+                original_mime=pil_size[2],
                 sha256=original.sha256,
-                width=prepared.width,
-                height=prepared.height,
+                width=pil_size[0],
+                height=pil_size[1],
             )
         )
-        boxes_by_side[uploaded.side] = engine.read(prepared.ocr_image)
-    apply_extraction(document, engine, boxes_by_side)
+    save_crops(store, document, readings)
+    apply_extraction(document, engine, readings)
     session.add(document)
     session.flush()
     session.add(AuditLog(user_id=user_id, action="create", entity="document", entity_id=document.id))
@@ -105,44 +264,50 @@ def process_document(
     return document
 
 
-def apply_extraction(document: Document, engine: OcrEngine, boxes_by_side: dict[ImageSide, list[TextBox]]) -> None:
-    result = get_parser(document.doc_type).parse(boxes_by_side[ImageSide.FRONT], boxes_by_side[ImageSide.BACK])
-    document.extra_fields = {}
-    for name in DOCUMENT_COLUMNS:
-        setattr(document, name, None)
-    apply_values(document, result.values())
-    document.field_confidence = {name: field.confidence for name, field in result.fields.items()}
-    document.extra_fields = {**document.extra_fields, "extracted": result.values(), "issues": result.issues}
-    all_boxes = boxes_by_side[ImageSide.FRONT] + boxes_by_side[ImageSide.BACK]
-    document.ocr_confidence_avg = sum(box.confidence for box in all_boxes) / len(all_boxes) if all_boxes else None
-    document.raw_text = result.raw_text
-    document.ocr_engine = engine.name
-    document.processed_at = utc_now()
-    document.status = DocumentStatus.PENDING_REVIEW
-    document.reviewed_manually = False
-    document.reviewed_at = None
+def prepare_dimensions(content: bytes) -> tuple[int, int, str]:
+    image, mime = load_image(content)
+    return image.width, image.height, mime
+
+
+def delete_image_files(store: EncryptedFileStore, image: DocumentImage) -> None:
+    for path in (image.original_path, image.processed_path, image.thumbnail_path):
+        if path:
+            store.delete(path)
 
 
 def reprocess_document(
     session: Session, store: EncryptedFileStore, engine: OcrEngine, document: Document, user_id: int | None = None
 ) -> Document:
-    boxes_by_side: dict[ImageSide, list[TextBox]] = {ImageSide.FRONT: [], ImageSide.BACK: []}
-    for image in document.images:
-        prepared = prepare_image(store.load(image.original_path))
-        boxes_by_side[ImageSide(image.side)] = engine.read(prepared.ocr_image)
-    apply_extraction(document, engine, boxes_by_side)
+    readings: list[SideReading] = []
+    for image in list(document.images):
+        if image.kind != ImageKind.PAGE:
+            delete_image_files(store, image)
+            document.images.remove(image)
+            continue
+        side_readings = read_upload(engine, UploadedSide(ImageSide(image.side), store.load(image.original_path)))
+        readings.extend(side_readings)
+        preview = page_preview(side_readings)
+        for path in (image.processed_path, image.thumbnail_path):
+            if path:
+                store.delete(path)
+        image.processed_path = store.save("processed", encode_processed(preview)).relative_path
+        image.thumbnail_path = store.save("thumbnails", encode_thumbnail(preview)).relative_path
+    save_crops(store, document, readings)
+    apply_extraction(document, engine, readings)
     session.add(AuditLog(user_id=user_id, action="reprocess", entity="document", entity_id=document.id))
     session.commit()
     return document
 
 
 def review_document(session: Session, document: Document, values: dict[str, str], user_id: int | None = None) -> Document:
-    extracted = (document.extra_fields or {}).get("extracted", {})
-    apply_values(document, {name: values.get(name, "") for name in DOCUMENT_COLUMNS if name in values})
     parser = get_parser(document.doc_type)
+    extracted = (document.extra_fields or {}).get("extracted", {})
+    apply_values(document, {name: values.get(name, "") for name in parser.field_names if name in values})
     current = document_values(document)
     document.extra_fields = {**document.extra_fields, "issues": parser.validate(current)}
-    document.reviewed_manually = any((extracted.get(name) or "") != (current.get(name) or "") for name in current)
+    document.reviewed_manually = any(
+        (extracted.get(name) or "") != (current.get(name) or "") for name in parser.field_names
+    )
     document.status = DocumentStatus.REVIEWED
     document.reviewed_at = utc_now()
     document.person = upsert_person(session, document)
@@ -172,9 +337,7 @@ def upsert_person(session: Session, document: Document) -> Person:
 
 def delete_document(session: Session, store: EncryptedFileStore, document: Document, user_id: int | None = None) -> None:
     for image in document.images:
-        for path in (image.original_path, image.processed_path, image.thumbnail_path):
-            if path:
-                store.delete(path)
+        delete_image_files(store, image)
     person = document.person
     session.add(AuditLog(user_id=user_id, action="delete", entity="document", entity_id=document.id))
     session.delete(document)
@@ -187,9 +350,8 @@ def delete_document(session: Session, store: EncryptedFileStore, document: Docum
 def delete_person(session: Session, store: EncryptedFileStore, person: Person, user_id: int | None = None) -> None:
     for document in list(person.documents):
         for image in document.images:
-            for path in (image.original_path, image.processed_path, image.thumbnail_path):
-                if path:
-                    store.delete(path)
+            delete_image_files(store, image)
     session.add(AuditLog(user_id=user_id, action="delete", entity="person", entity_id=person.id))
     session.delete(person)
     session.commit()
+
