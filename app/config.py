@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     access_minutes: int = 15
     refresh_days: int = 30
     scan_link_hours: int = 48
+    secure_cookies: bool = False
     max_upload_mb: int = 15
     frontend_dir: Path = Path("./frontend/dist")
 

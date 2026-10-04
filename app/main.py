@@ -11,10 +11,10 @@ from app.auth.throttle import LoginThrottle
 from app.config import Settings, get_settings
 from app.db.session import build_engine, build_session_factory
 from app.security.crypto import FileCipher
+from app.services.audit import current_ip
 from app.storage.encrypted_store import EncryptedFileStore
-from app.web.routes import router
+from app.web.routes import public_router, router
 
-SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 MINIMUM_SECRET_LENGTH = 32
 CSRF_HEADER = "x-requested-with"
 CSRF_HEADER_VALUE = "green-ocr"
@@ -52,6 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.login_throttle = LoginThrottle()
     application.include_router(auth_router)
     application.include_router(router)
+    application.include_router(public_router)
 
     @application.get("/health")
     def health() -> dict[str, str]:
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.middleware("http")
     async def protect_api(request: Request, call_next):
         path = request.url.path
+        current_ip.set(request.client.host if request.client else None)
         if path.startswith("/api/"):
             if request.method not in SAFE_METHODS and request.headers.get(CSRF_HEADER) != CSRF_HEADER_VALUE:
                 return JSONResponse({"detail": "Requisição recusada"}, status_code=403)
@@ -77,8 +79,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         SessionMiddleware,
         secret_key=settings.secret_key,
         session_cookie="green_ocr_session",
-        max_age=SESSION_MAX_AGE_SECONDS,
+        max_age=settings.access_minutes * 60,
         same_site="strict",
-        https_only=False,
+        https_only=settings.secure_cookies,
     )
     return application
