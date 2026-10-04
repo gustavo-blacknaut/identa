@@ -6,6 +6,7 @@ from app.db.models import Document, DocumentImage, DocumentStatus, ImageKind, Pe
 from app.parsers.base import DocumentParser
 from app.parsers.registry import get_parser
 from app.services.documents import document_values
+from app.services.people import other_data
 
 PERSONAL_FIELDS = {"full_name", "birth_date", "birthplace", "mother_name", "father_name"}
 
@@ -105,6 +106,7 @@ class PersonDetail(PersonOut):
     father_name: str | None
     birthplace: str | None
     document_list: list[DocumentSummary]
+    other_data: list["OtherDataOut"]
 
 
 class PageOut[T](BaseModel):
@@ -121,6 +123,8 @@ class AuditOut(BaseModel):
     action: str
     entity: str
     entity_id: int | None
+    details: str | None
+    ip_address: str | None
 
 
 def image_out(image: DocumentImage) -> ImageOut:
@@ -227,10 +231,72 @@ def person_detail(person: Person) -> PersonDetail:
         father_name=person.father_name,
         birthplace=person.birthplace,
         document_list=[document_summary(document, get_parser(document.doc_type)) for document in documents],
+        other_data=[OtherDataOut(**vars(item)) for item in other_data(person)],
     )
 
 
 class SystemOut(BaseModel):
     ocr_engine: str
+    ocr_device: str
     encrypted_storage: bool
     max_upload_mb: int
+
+
+class OtherDataOut(BaseModel):
+    label: str
+    value: str
+    doc_type: str
+    document_id: int
+
+
+class PersonUpdateIn(BaseModel):
+    values: dict[str, str | None]
+
+
+class VerificationOut(BaseModel):
+    changes: list[str]
+    problems: list[str]
+    person: "PersonDetail"
+
+
+class SettingsOut(BaseModel):
+    timezone: str
+
+
+class SettingsIn(BaseModel):
+    timezone: str
+
+
+class SessionOut(BaseModel):
+    id: int
+    user_agent: str | None
+    ip_address: str | None
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    current: bool
+
+
+class ScanLinkIn(BaseModel):
+    label: str | None = None
+    hours: int = 48
+
+
+class ScanLinkOut(BaseModel):
+    id: int
+    label: str | None
+    state: str
+    created_at: datetime
+    expires_at: datetime
+    used_at: datetime | None
+    document_id: int | None
+
+
+class ScanLinkCreated(ScanLinkOut):
+    token: str
+
+
+class PublicLinkOut(BaseModel):
+    label: str | None
+    state: str
+    expires_at: datetime
