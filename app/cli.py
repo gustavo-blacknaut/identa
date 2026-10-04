@@ -37,6 +37,23 @@ def run_create_user(arguments: argparse.Namespace) -> None:
         print(f"Usuário '{arguments.username}' salvo")
 
 
+def run_download_models() -> None:
+    from app.ocr.devices import DeviceChoice
+    from app.ocr.rapid_engine import RapidOcrEngine
+
+    model_dir = get_settings().ocr_model_dir
+    RapidOcrEngine(DeviceChoice("cpu", None, "download"), model_dir)
+    print(f"Modelos disponíveis em {model_dir}")
+
+
+def run_ocr_status() -> None:
+    from app.ocr.status import ocr_status
+
+    settings = get_settings()
+    for label, value in ocr_status(settings.ocr_engine, settings.ocr_device, settings.ocr_model_dir).items():
+        print(f"{label}: {value}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="registra")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -45,11 +62,17 @@ def main() -> None:
     user_parser.add_argument("username")
     user_parser.add_argument("--generate", action="store_true", help="Gera uma senha aleatória e grava em arquivo")
     user_parser.add_argument("--output", default="data/credenciais.txt")
+    commands.add_parser("download-models", help="Baixa os modelos de OCR para o diretório configurado")
+    commands.add_parser("ocr-status", help="Mostra o dispositivo de OCR escolhido, os providers e o adaptador de vídeo")
     arguments = parser.parse_args()
     if arguments.command == "generate-key":
         print(generate_key())
     elif arguments.command == "create-user":
         run_create_user(arguments)
+    elif arguments.command == "download-models":
+        run_download_models()
+    elif arguments.command == "ocr-status":
+        run_ocr_status()
 
 
 if __name__ == "__main__":

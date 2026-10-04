@@ -30,6 +30,7 @@ def client(tmp_path):
         encryption_key=generate_key(),
         secret_key=generate_key(),
         frontend_dir=tmp_path / "frontend",
+        ocr_warmup=False,
     )
     application = create_app(settings)
     config = Config("alembic.ini")
@@ -47,3 +48,8 @@ def login(client):
     response = client.post("/api/auth/login", json={"username": USERNAME, "password": PASSWORD})
     assert response.status_code == 200
     return response
+
+
+@pytest.fixture(autouse=True)
+def disable_ocr_warmup(monkeypatch):
+    monkeypatch.setenv("GREEN_OCR_OCR_WARMUP", "false")

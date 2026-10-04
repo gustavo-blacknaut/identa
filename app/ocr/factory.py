@@ -1,12 +1,50 @@
-from functools import lru_cache
+import logging
+import threading
+from pathlib import Path
 
 from app.ocr.base import OcrEngine
+from app.ocr.calibration import calibration_document
+from app.ocr.devices import DeviceChoice, resolve_device
+
+logger = logging.getLogger("app.ocr")
+_engines: dict[tuple[str, str, str], OcrEngine] = {}
+_lock = threading.Lock()
 
 
-@lru_cache
-def get_ocr_engine(engine_name: str, device: str = "cpu") -> OcrEngine:
-    if engine_name == "paddle":
-        from app.ocr.paddle_engine import PaddleOcrEngine
+def build_rapid(model_dir: Path):
+    from app.ocr.rapid_engine import RapidOcrEngine
 
-        return PaddleOcrEngine(device=device)
-    raise ValueError(f"Motor de OCR desconhecido: {engine_name}")
+    def build(choice: DeviceChoice):
+        return RapidOcrEngine(choice, model_dir)
+
+    return build
+
+
+def create_engine(engine_name: str, device: str, model_dir: Path) -> OcrEngine:
+    if engine_name == "tesseract":
+        from app.ocr.tesseract_engine import TesseractEngine
+
+        return TesseractEngine()
+    try:
+        _, engine = resolve_device(device, build_rapid(model_dir), calibration_document)
+        return engine
+    except Exception as error:
+        from app.ocr.tesseract_engine import TesseractEngine, tesseract_available
+
+        if not tesseract_available():
+            raise
+        logger.error("RapidOCR indisponível (%s: %s); usando Tesseract", type(error).__name__, error)
+        return TesseractEngine()
+
+
+def get_ocr_engine(engine_name: str, device: str = "auto", model_dir: Path = Path("./models")) -> OcrEngine:
+    key = (engine_name, device, str(model_dir))
+    with _lock:
+        if key not in _engines:
+            _engines[key] = create_engine(engine_name, device, model_dir)
+        return _engines[key]
+
+
+def loaded_engines() -> list[OcrEngine]:
+    with _lock:
+        return list(_engines.values())

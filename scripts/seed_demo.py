@@ -58,7 +58,7 @@ def seed_people(count: int, generator: random.Random) -> None:
                         status=generator.choice(STATUS_WEIGHTS),
                         full_name=name,
                         cpf=cpf,
-                        ocr_engine="paddle",
+                        ocr_engine="rapidocr",
                         ocr_confidence_avg=round(generator.uniform(0.72, 0.99), 3),
                         processed_at=created,
                         field_confidence={},

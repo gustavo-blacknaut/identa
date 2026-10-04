@@ -19,4 +19,5 @@ def get_store(request: Request) -> EncryptedFileStore:
 
 def get_engine(request: Request) -> OcrEngine:
     override = getattr(request.app.state, "ocr_engine", None)
-    return override or get_ocr_engine(request.app.state.settings.ocr_engine, request.app.state.settings.ocr_device)
+    settings = request.app.state.settings
+    return override or get_ocr_engine(settings.ocr_engine, settings.ocr_device, settings.ocr_model_dir)

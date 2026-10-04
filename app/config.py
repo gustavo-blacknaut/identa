@@ -12,12 +12,14 @@ class Settings(BaseSettings):
     storage_dir: Path = Path("./storage")
     encryption_key: str = Field(default="", description="Chave AES-256 em base64 urlsafe (32 bytes)")
     secret_key: str = ""
-    ocr_engine: str = "paddle"
-    ocr_device: str = "cpu"
+    ocr_engine: str = "rapidocr"
+    ocr_device: str = "auto"
+    ocr_model_dir: Path = Path("./models")
     access_minutes: int = 15
     refresh_days: int = 30
     scan_link_hours: int = 48
     secure_cookies: bool = False
+    ocr_warmup: bool = True
     max_upload_mb: int = 15
     frontend_dir: Path = Path("./frontend/dist")
 

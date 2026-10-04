@@ -1,3 +1,5 @@
+import logging
+import threading
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -10,6 +12,7 @@ from app.auth.routes import router as auth_router
 from app.auth.throttle import LoginThrottle
 from app.config import Settings, get_settings
 from app.db.session import build_engine, build_session_factory
+from app.ocr.factory import get_ocr_engine
 from app.security.crypto import FileCipher
 from app.services.audit import current_ip
 from app.storage.encrypted_store import EncryptedFileStore
@@ -40,8 +43,25 @@ def mount_frontend(application: FastAPI, frontend_dir: Path) -> None:
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
 
 
+def configure_logging() -> None:
+    logger = logging.getLogger("app")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+
+
+def warm_up_ocr(settings: Settings) -> None:
+    try:
+        get_ocr_engine(settings.ocr_engine, settings.ocr_device, settings.ocr_model_dir)
+    except Exception:
+        logging.getLogger("app.ocr").exception("Falha ao preparar o motor de OCR")
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging()
     cipher = FileCipher(settings.encryption_key)
     if len(settings.secret_key) < MINIMUM_SECRET_LENGTH:
         raise MissingSecretKeyError(f"GREEN_OCR_SECRET_KEY precisa ter pelo menos {MINIMUM_SECRET_LENGTH} caracteres")
@@ -59,6 +79,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     mount_frontend(application, settings.frontend_dir)
+    if settings.ocr_warmup:
+        threading.Thread(target=warm_up_ocr, args=(settings,), daemon=True, name="ocr-warmup").start()
 
     @application.middleware("http")
     async def protect_api(request: Request, call_next):
