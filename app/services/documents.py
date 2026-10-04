@@ -11,16 +11,15 @@ from app.db.base import utc_now
 from app.db.models import AuditLog, Document, DocumentImage, DocumentStatus, ImageKind, ImageSide, Person
 from app.imaging.crops import find_fingerprint, find_portrait, find_signature
 from app.imaging.preprocess import (
-    OPEN_DOCUMENT_LONG_SIDE,
     encode_processed,
     encode_thumbnail,
     load_image,
     prepare_image,
-    split_open_document,
 )
 from app.ocr.base import OcrEngine, TextBox
 from app.ocr.orientation import read_with_best_orientation
 from app.parsers.base import ExtractedField, side_of
+from app.parsers.classifier import classify
 from app.parsers.common import repair_cpf_candidates
 from app.parsers.registry import get_parser
 from app.storage.encrypted_store import EncryptedFileStore
@@ -99,29 +98,10 @@ def document_values(document: Document) -> dict[str, str]:
     return values
 
 
-def read_upload(engine: OcrEngine, uploaded: UploadedSide) -> list[SideReading]:
-    if uploaded.side == ImageSide.OPEN:
-        prepared = prepare_image(uploaded.content, long_side=OPEN_DOCUMENT_LONG_SIDE)
-        halves = [read_with_best_orientation(engine, half) for half in split_open_document(prepared.ocr_image)]
-        if find_portrait(halves[1].image) is not None and find_portrait(halves[0].image) is None:
-            halves.reverse()
-        return [
-            SideReading(ImageSide.FRONT, halves[0].image, halves[0].boxes),
-            SideReading(ImageSide.BACK, halves[1].image, halves[1].boxes),
-        ]
-    prepared = prepare_image(uploaded.content)
-    reading = read_with_best_orientation(engine, prepared.ocr_image)
-    return [SideReading(uploaded.side, reading.image, reading.boxes)]
-
-
-def side_by_side(images: list[np.ndarray]) -> np.ndarray:
-    height = min(image.shape[0] for image in images)
-    resized = [cv2.resize(image, (int(image.shape[1] * height / image.shape[0]), height)) for image in images]
-    return np.hstack(resized)
-
-
-def page_preview(readings: list[SideReading]) -> np.ndarray:
-    return readings[0].image if len(readings) == 1 else side_by_side([reading.image for reading in readings])
+def read_upload(engine: OcrEngine, uploaded: UploadedSide) -> SideReading:
+    reading = read_with_best_orientation(engine, prepare_image(uploaded.content).ocr_image)
+    side = ImageSide.BACK if uploaded.side == ImageSide.BACK else ImageSide.FRONT
+    return SideReading(side, reading.image, reading.boxes)
 
 
 def save_crop(store: EncryptedFileStore, document: Document, side: str, kind: ImageKind, crop: np.ndarray | None) -> None:
@@ -195,7 +175,7 @@ def verify_cpf(engine: OcrEngine, readings: list[SideReading], fields: dict[str,
     return "cpf_corrected"
 
 
-def apply_extraction(document: Document, engine: OcrEngine, readings: list[SideReading]) -> None:
+def apply_extraction(document: Document, engine: OcrEngine, readings: list[SideReading], detected: bool = False) -> None:
     front = [box for reading in readings if reading.side == ImageSide.FRONT for box in reading.boxes]
     back = [box for reading in readings if reading.side == ImageSide.BACK for box in reading.boxes]
     ordered = sorted(readings, key=lambda reading: reading.side != ImageSide.FRONT)
@@ -213,7 +193,7 @@ def apply_extraction(document: Document, engine: OcrEngine, readings: list[SideR
         **document.extra_fields,
         "extracted": result.values(),
         "issues": result.issues,
-        "notes": [cpf_status] if cpf_status else [],
+        "notes": [note for note in (cpf_status, "type_detected" if detected else None) if note],
     }
     all_boxes = front + back
     document.ocr_confidence_avg = sum(box.confidence for box in all_boxes) / len(all_boxes) if all_boxes else None
@@ -225,48 +205,54 @@ def apply_extraction(document: Document, engine: OcrEngine, readings: list[SideR
     document.reviewed_at = None
 
 
+def store_page(store: EncryptedFileStore, document: Document, uploaded: UploadedSide, reading: SideReading) -> None:
+    original = store.save("originals", uploaded.content)
+    image, mime = load_image(uploaded.content)
+    document.images.append(
+        DocumentImage(
+            side=reading.side,
+            kind=ImageKind.PAGE,
+            original_path=original.relative_path,
+            processed_path=store.save("processed", encode_processed(reading.image)).relative_path,
+            thumbnail_path=store.save("thumbnails", encode_thumbnail(reading.image)).relative_path,
+            original_mime=mime,
+            sha256=original.sha256,
+            width=image.width,
+            height=image.height,
+        )
+    )
+
+
+def resolve_type(requested: str | None, readings: list[SideReading]) -> tuple[str, bool]:
+    if requested:
+        get_parser(requested)
+        return requested, False
+    classification = classify([box for reading in readings for box in reading.boxes])
+    return classification.doc_type, classification.detected
+
+
 def process_document(
     session: Session,
     store: EncryptedFileStore,
     engine: OcrEngine,
-    doc_type: str,
+    doc_type: str | None,
     sides: list[UploadedSide],
     user_id: int | None = None,
 ) -> Document:
-    get_parser(doc_type)
-    document = Document(doc_type=doc_type, ocr_engine=engine.name, created_by=user_id, field_confidence={}, extra_fields={})
-    readings: list[SideReading] = []
-    for uploaded in sides:
-        prepared_readings = read_upload(engine, uploaded)
-        readings.extend(prepared_readings)
-        original = store.save("originals", uploaded.content)
-        preview = page_preview(prepared_readings)
-        pil_size = prepare_dimensions(uploaded.content)
-        document.images.append(
-            DocumentImage(
-                side=uploaded.side,
-                kind=ImageKind.PAGE,
-                original_path=original.relative_path,
-                processed_path=store.save("processed", encode_processed(preview)).relative_path,
-                thumbnail_path=store.save("thumbnails", encode_thumbnail(preview)).relative_path,
-                original_mime=pil_size[2],
-                sha256=original.sha256,
-                width=pil_size[0],
-                height=pil_size[1],
-            )
-        )
+    if doc_type:
+        get_parser(doc_type)
+    readings = [read_upload(engine, uploaded) for uploaded in sides]
+    resolved_type, detected = resolve_type(doc_type, readings)
+    document = Document(doc_type=resolved_type, ocr_engine=engine.name, created_by=user_id, field_confidence={}, extra_fields={})
+    for uploaded, reading in zip(sides, readings, strict=True):
+        store_page(store, document, uploaded, reading)
     save_crops(store, document, readings)
-    apply_extraction(document, engine, readings)
+    apply_extraction(document, engine, readings, detected)
     session.add(document)
     session.flush()
     session.add(AuditLog(user_id=user_id, action="create", entity="document", entity_id=document.id))
     session.commit()
     return document
-
-
-def prepare_dimensions(content: bytes) -> tuple[int, int, str]:
-    image, mime = load_image(content)
-    return image.width, image.height, mime
 
 
 def delete_image_files(store: EncryptedFileStore, image: DocumentImage) -> None:
@@ -276,7 +262,12 @@ def delete_image_files(store: EncryptedFileStore, image: DocumentImage) -> None:
 
 
 def reprocess_document(
-    session: Session, store: EncryptedFileStore, engine: OcrEngine, document: Document, user_id: int | None = None
+    session: Session,
+    store: EncryptedFileStore,
+    engine: OcrEngine,
+    document: Document,
+    user_id: int | None = None,
+    doc_type: str | None = None,
 ) -> Document:
     readings: list[SideReading] = []
     for image in list(document.images):
@@ -284,16 +275,17 @@ def reprocess_document(
             delete_image_files(store, image)
             document.images.remove(image)
             continue
-        side_readings = read_upload(engine, UploadedSide(ImageSide(image.side), store.load(image.original_path)))
-        readings.extend(side_readings)
-        preview = page_preview(side_readings)
+        reading = read_upload(engine, UploadedSide(ImageSide(image.side), store.load(image.original_path)))
+        readings.append(reading)
         for path in (image.processed_path, image.thumbnail_path):
             if path:
                 store.delete(path)
-        image.processed_path = store.save("processed", encode_processed(preview)).relative_path
-        image.thumbnail_path = store.save("thumbnails", encode_thumbnail(preview)).relative_path
+        image.side = reading.side
+        image.processed_path = store.save("processed", encode_processed(reading.image)).relative_path
+        image.thumbnail_path = store.save("thumbnails", encode_thumbnail(reading.image)).relative_path
+    document.doc_type, detected = resolve_type(doc_type, readings)
     save_crops(store, document, readings)
-    apply_extraction(document, engine, readings)
+    apply_extraction(document, engine, readings, detected)
     session.add(AuditLog(user_id=user_id, action="reprocess", entity="document", entity_id=document.id))
     session.commit()
     return document

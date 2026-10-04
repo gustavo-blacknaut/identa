@@ -11,7 +11,6 @@ from app.imaging.preprocess import (
     encode_thumbnail,
     find_document_corners,
     prepare_image,
-    split_open_document,
 )
 from app.ocr.base import TextBox
 from app.ocr.orientation import read_with_best_orientation
@@ -42,14 +41,6 @@ def test_derivatives_are_compressed():
     assert encode_processed(prepared.ocr_image)[:2] == b"\xff\xd8"
     assert len(thumbnail) < len(original)
     assert prepared.original_mime == "image/jpeg"
-
-
-def test_open_document_is_split_along_long_axis():
-    wide = np.zeros((100, 300, 3), np.uint8)
-    left, right = split_open_document(wide)
-    assert left.shape[:2] == right.shape[:2] == (100, 150)
-    top, bottom = split_open_document(np.zeros((300, 100, 3), np.uint8))
-    assert top.shape[:2] == (150, 100)
 
 
 def test_orientation_search_picks_upright_reading():

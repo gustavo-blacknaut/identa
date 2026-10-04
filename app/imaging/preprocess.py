@@ -9,7 +9,6 @@ from pillow_heif import register_heif_opener
 register_heif_opener()
 
 OCR_LONG_SIDE = 2000
-OPEN_DOCUMENT_LONG_SIDE = 3200
 THUMBNAIL_LONG_SIDE = 480
 DETECTION_LONG_SIDE = 800
 MINIMUM_DOCUMENT_AREA_RATIO = 0.2
@@ -117,15 +116,6 @@ def prepare_image(content: bytes, long_side: int = OCR_LONG_SIDE) -> PreparedIma
         height=pil_image.height,
         document_detected=corners is not None,
     )
-
-
-def split_open_document(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    height, width = image.shape[:2]
-    if width >= height:
-        middle = width // 2
-        return image[:, :middle], image[:, middle:]
-    middle = height // 2
-    return image[:middle], image[middle:]
 
 
 def encode_processed(image_bgr: np.ndarray) -> bytes:
