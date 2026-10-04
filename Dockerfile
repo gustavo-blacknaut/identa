@@ -11,21 +11,23 @@ FROM python:3.12-slim AS app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True
+    GREEN_OCR_OCR_DEVICE=cpu \
+    GREEN_OCR_OCR_MODEL_DIR=/app/models
 
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 libglib2.0-0 libgl1 fonts-dejavu-core \
+    tesseract-ocr tesseract-ocr-por \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY pyproject.toml ./
-RUN mkdir app && touch app/__init__.py && pip install ".[ocr,dev]" && rm -rf app
+RUN mkdir app && touch app/__init__.py && pip install ".[cpu,tesseract,dev]" && rm -rf app
 
 COPY . .
-RUN pip install --no-deps -e .
+RUN pip install --no-deps -e . && python -m app.cli download-models
 COPY --from=frontend /frontend/dist ./frontend/dist
 
-RUN useradd --create-home --uid 1000 greenocr && mkdir -p data storage /home/greenocr/.paddlex \
+RUN useradd --create-home --uid 1000 greenocr && mkdir -p data storage \
     && chown -R greenocr /app /home/greenocr
 USER greenocr
 
