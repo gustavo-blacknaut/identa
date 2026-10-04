@@ -21,6 +21,14 @@ class DocumentStatus(StrEnum):
 class ImageSide(StrEnum):
     FRONT = "front"
     BACK = "back"
+    OPEN = "open"
+
+
+class ImageKind(StrEnum):
+    PAGE = "page"
+    PORTRAIT = "portrait"
+    FINGERPRINT = "fingerprint"
+    SIGNATURE = "signature"
 
 
 class UserRole(StrEnum):
@@ -98,6 +106,7 @@ class DocumentImage(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"), index=True)
     side: Mapped[str] = mapped_column(String(8))
+    kind: Mapped[str] = mapped_column(String(16), default=ImageKind.PAGE, server_default=ImageKind.PAGE.value)
     original_path: Mapped[str] = mapped_column(String(255))
     processed_path: Mapped[str | None] = mapped_column(String(255))
     thumbnail_path: Mapped[str | None] = mapped_column(String(255))
