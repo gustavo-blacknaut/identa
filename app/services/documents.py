@@ -248,6 +248,7 @@ def process_document(
         store_page(store, document, uploaded, reading)
     save_crops(store, document, readings)
     apply_extraction(document, engine, readings, detected)
+    link_person_by_cpf(session, document)
     session.add(document)
     session.flush()
     session.add(AuditLog(user_id=user_id, action="create", entity="document", entity_id=document.id))
@@ -286,6 +287,7 @@ def reprocess_document(
     document.doc_type, detected = resolve_type(doc_type, readings)
     save_crops(store, document, readings)
     apply_extraction(document, engine, readings, detected)
+    link_person_by_cpf(session, document)
     session.add(AuditLog(user_id=user_id, action="reprocess", entity="document", entity_id=document.id))
     session.commit()
     return document
@@ -308,7 +310,7 @@ def review_document(session: Session, document: Document, values: dict[str, str]
     return document
 
 
-def upsert_person(session: Session, document: Document) -> Person:
+def upsert_person(session: Session, document: Document, overwrite: bool = True) -> Person:
     cpf = normalize_cpf(document.cpf or "")
     person = document.person
     if cpf:
@@ -322,7 +324,7 @@ def upsert_person(session: Session, document: Document) -> Person:
         person.cpf = cpf
     for name in PERSON_COLUMNS:
         value = getattr(document, name)
-        if value:
+        if value and (overwrite or getattr(person, name) is None):
             setattr(person, name, value)
     return person
 
@@ -347,3 +349,8 @@ def delete_person(session: Session, store: EncryptedFileStore, person: Person, u
     session.delete(person)
     session.commit()
 
+
+
+def link_person_by_cpf(session: Session, document: Document) -> None:
+    if normalize_cpf(document.cpf or ""):
+        document.person = upsert_person(session, document, overwrite=False)

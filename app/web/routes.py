@@ -1,7 +1,8 @@
 import logging
+from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -18,18 +19,25 @@ from app.services.documents import (
     reprocess_document,
     review_document,
 )
+from app.services.queries import MAX_PAGE_SIZE, ListFilters, list_audit, list_documents, list_people
 from app.storage.encrypted_store import EncryptedFileStore
 from app.web.deps import get_engine, get_session, get_store
 from app.web.schemas import (
+    AuditOut,
     DocumentDetail,
+    DocumentSummary,
     DocumentTypeOut,
     OverviewOut,
+    PageOut,
+    PersonDetail,
     PersonOut,
     ReprocessIn,
     ReviewIn,
     StatsOut,
+    SystemOut,
     document_detail,
     document_summary,
+    person_detail,
     person_out,
 )
 
@@ -157,10 +165,56 @@ def remove_document(request: Request, document_id: int, session: SessionDep, sto
     return Response(status_code=204)
 
 
+def list_filters(
+    q: str = "",
+    doc_type: str = "",
+    status: str = "",
+    created_from: Annotated[date | None, Query(alias="from")] = None,
+    created_to: Annotated[date | None, Query(alias="to")] = None,
+    sort: str = "date",
+    order: str = "desc",
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = 50,
+) -> ListFilters:
+    return ListFilters(q, doc_type, status, created_from, created_to, sort, order, page, page_size)
+
+
+FiltersDep = Annotated[ListFilters, Depends(list_filters)]
+
+
 @router.get("/people")
-def list_people(session: SessionDep) -> list[PersonOut]:
-    people = session.scalars(select(Person).order_by(Person.updated_at.desc()).limit(RECENT_LIMIT)).all()
-    return [person_out(person) for person in people]
+def people(session: SessionDep, filters: FiltersDep) -> PageOut[PersonOut]:
+    result = list_people(session, filters)
+    items = [person_out(person) for person in result.items]
+    return PageOut(items=items, total=result.total, page=filters.page, page_size=filters.limit)
+
+
+@router.get("/people/{person_id}")
+def show_person(person_id: int, session: SessionDep) -> PersonDetail:
+    person = session.get(Person, person_id)
+    if person is None:
+        raise HTTPException(404, "Pessoa não encontrada")
+    return person_detail(person)
+
+
+@router.get("/documents")
+def documents(session: SessionDep, filters: FiltersDep) -> PageOut[DocumentSummary]:
+    result = list_documents(session, filters)
+    items = [document_summary(document, get_parser(document.doc_type)) for document in result.items]
+    return PageOut(items=items, total=result.total, page=filters.page, page_size=filters.limit)
+
+
+@router.get("/audit")
+def audit(session: SessionDep, filters: FiltersDep, action: str = "", entity: str = "") -> PageOut[AuditOut]:
+    result = list_audit(session, filters, action, entity)
+    items = [AuditOut(**vars(entry)) for entry in result.items]
+    return PageOut(items=items, total=result.total, page=filters.page, page_size=filters.limit)
+
+
+@router.get("/system")
+def system(request: Request) -> SystemOut:
+    settings = request.app.state.settings
+    return SystemOut(ocr_engine=settings.ocr_engine, encrypted_storage=True, max_upload_mb=settings.max_upload_mb)
 
 
 @router.delete("/people/{person_id}", status_code=204)

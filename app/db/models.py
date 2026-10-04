@@ -57,7 +57,7 @@ class Person(Base):
     mother_name: Mapped[str | None] = mapped_column(String(200))
     father_name: Mapped[str | None] = mapped_column(String(200))
     birthplace: Mapped[str | None] = mapped_column(String(120))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     documents: Mapped[list["Document"]] = relationship(back_populates="person", cascade="all, delete-orphan")
@@ -69,11 +69,11 @@ class Document(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     person_id: Mapped[int | None] = mapped_column(ForeignKey("people.id", ondelete="CASCADE"), index=True)
     doc_type: Mapped[str] = mapped_column(String(32), index=True)
-    status: Mapped[str] = mapped_column(String(32), default=DocumentStatus.PENDING_REVIEW)
+    status: Mapped[str] = mapped_column(String(32), default=DocumentStatus.PENDING_REVIEW, index=True)
     reviewed_manually: Mapped[bool] = mapped_column(Boolean, default=False)
     ocr_engine: Mapped[str | None] = mapped_column(String(32))
     ocr_confidence_avg: Mapped[float | None] = mapped_column(Float)
-    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
@@ -124,7 +124,7 @@ class AuditLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
-    action: Mapped[str] = mapped_column(String(32))
+    action: Mapped[str] = mapped_column(String(32), index=True)
     entity: Mapped[str] = mapped_column(String(32))
     entity_id: Mapped[int | None] = mapped_column(Integer)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)

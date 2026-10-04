@@ -60,7 +60,7 @@ def test_full_flow_upload_review_and_delete(client):
 
     second = upload_rg(client).json()
     client.put(f"/api/documents/{second['id']}", json={"values": field_values(second)})
-    people = client.get("/api/people").json()
+    people = client.get("/api/people").json()["items"]
     assert len(people) == 1
     assert people[0]["documents"] == 2
 

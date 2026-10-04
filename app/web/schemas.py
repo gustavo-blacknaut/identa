@@ -2,8 +2,9 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.db.models import Document, DocumentImage, ImageKind, Person
+from app.db.models import Document, DocumentImage, DocumentStatus, ImageKind, Person
 from app.parsers.base import DocumentParser
+from app.parsers.registry import get_parser
 from app.services.documents import document_values
 
 PERSONAL_FIELDS = {"full_name", "birth_date", "birthplace", "mother_name", "father_name"}
@@ -63,6 +64,7 @@ class DocumentDetail(DocumentSummary):
     pages: list[ImageOut]
     crops: list[ImageOut]
     raw_text: str
+    image_count: int
     person_id: int | None
 
 
@@ -90,8 +92,35 @@ class PersonOut(BaseModel):
     full_name: str | None
     cpf: str | None
     birth_date: str | None
+    status: str | None
+    doc_types: list[str]
     documents: int
+    images: int
+    created_at: datetime
     updated_at: datetime
+
+
+class PersonDetail(PersonOut):
+    mother_name: str | None
+    father_name: str | None
+    birthplace: str | None
+    document_list: list[DocumentSummary]
+
+
+class PageOut[T](BaseModel):
+    items: list[T]
+    total: int
+    page: int
+    page_size: int
+
+
+class AuditOut(BaseModel):
+    id: int
+    occurred_at: datetime
+    username: str | None
+    action: str
+    entity: str
+    entity_id: int | None
 
 
 def image_out(image: DocumentImage) -> ImageOut:
@@ -162,8 +191,17 @@ def document_detail(document: Document, parser: DocumentParser) -> DocumentDetai
         pages=[image_out(image) for image in document.images if image.kind == ImageKind.PAGE],
         crops=[image_out(image) for image in document.images if image.kind != ImageKind.PAGE],
         raw_text=document.raw_text or "",
+        image_count=len(document.images),
         person_id=document.person_id,
     )
+
+
+def person_status(person: Person) -> str | None:
+    if not person.documents:
+        return None
+    if any(document.status == DocumentStatus.PENDING_REVIEW for document in person.documents):
+        return DocumentStatus.PENDING_REVIEW
+    return DocumentStatus.REVIEWED
 
 
 def person_out(person: Person) -> PersonOut:
@@ -172,6 +210,27 @@ def person_out(person: Person) -> PersonOut:
         full_name=person.full_name,
         cpf=person.cpf,
         birth_date=person.birth_date.strftime("%d/%m/%Y") if person.birth_date else None,
+        status=person_status(person),
+        doc_types=sorted({document.doc_type for document in person.documents}),
         documents=len(person.documents),
+        images=sum(len(document.images) for document in person.documents),
+        created_at=person.created_at,
         updated_at=person.updated_at,
     )
+
+
+def person_detail(person: Person) -> PersonDetail:
+    documents = sorted(person.documents, key=lambda document: document.processed_at, reverse=True)
+    return PersonDetail(
+        **person_out(person).model_dump(),
+        mother_name=person.mother_name,
+        father_name=person.father_name,
+        birthplace=person.birthplace,
+        document_list=[document_summary(document, get_parser(document.doc_type)) for document in documents],
+    )
+
+
+class SystemOut(BaseModel):
+    ocr_engine: str
+    encrypted_storage: bool
+    max_upload_mb: int
