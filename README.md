@@ -1,254 +1,188 @@
-<p align="center">
-  <img src="docs/brand/registra-logo.svg" alt="Registra" width="280">
-</p>
+# Identa
 
-<p align="center">
-  Leitura de documentos de identidade brasileiros com revisão manual, rodando inteiramente no seu servidor.
-</p>
+[![Licença MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-1d6b47)](LICENSE)
 
-<p align="center">
-  <img src="docs/screenshots/fluxo.gif" alt="Envio de um RG, extração dos campos e revisão" width="880">
-</p>
+Lê RG, CNH e cartão CPF a partir de fotos, extrai os campos, valida o CPF e monta um cadastro de pessoas para revisão. Roda inteiro num servidor próprio: o OCR é local, as imagens ficam criptografadas em disco e nada é enviado para serviços externos.
 
-O Registra recebe a foto da frente e do verso de um RG, CNH ou cartão CPF, corrige perspectiva e orientação, extrai os campos com OCR, valida o que for possível e apresenta tudo para conferência antes de salvar. Os dados são consolidados por pessoa, deduplicados pelo CPF, prontos para alimentar fluxos de admissão ou cadastro de clientes.
+Existe porque digitar dados de documentos à mão é lento e sujeito a erro, e os serviços prontos de OCR exigem mandar imagens de documentos de terceiros para fora, o que complica a LGPD.
 
-Nenhuma imagem ou dado sai do servidor: o OCR roda localmente e os arquivos são gravados criptografados.
-
-## Telas
+<img src="docs/screenshots/fluxo.gif" alt="Envio de um RG fictício, revisão dos campos e cadastro da pessoa" width="760">
 
 | Desktop | Celular |
 | --- | --- |
-| <img src="docs/screenshots/pessoas-desktop.png" alt="Lista de pessoas com filtros" width="560"> | <img src="docs/screenshots/pessoas-celular.png" alt="Lista de pessoas no celular" width="220"> |
-| <img src="docs/screenshots/revisao-desktop-escuro.png" alt="Revisão de documento no tema escuro" width="560"> | <img src="docs/screenshots/revisao-celular.png" alt="Revisão no celular" width="220"> |
-| <img src="docs/screenshots/apagar-desktop.png" alt="Confirmação de exclusão" width="560"> | <img src="docs/screenshots/apagar-celular.png" alt="Confirmação de exclusão no celular" width="220"> |
+| <img src="docs/screenshots/1280/revisao.png" alt="Revisão de um documento com confiança por campo" width="520"> | <img src="docs/screenshots/375/pessoas.png" alt="Lista de pessoas no celular" width="220"> |
+| <img src="docs/screenshots/1280/pessoas-escuro.png" alt="Lista de pessoas no tema escuro" width="520"> | <img src="docs/screenshots/375/apagar.png" alt="Confirmação de exclusão em bottom sheet" width="220"> |
 
-## Recursos
+Todas as telas em 360, 375, 768, 1024, 1280 e 1920 px estão em [docs/screenshots](docs/screenshots). Os documentos que aparecem são fictícios, gerados por `apps/api/tests/synthetic.py`.
 
-**Leitura**
-- RG (modelos estaduais antigos e o modelo novo), CNH (incluindo a MRZ do verso) e cartão CPF
-- Identificação automática do tipo de documento
-- Correção de perspectiva, detecção de orientação e realce de contraste antes do OCR
-- Leitura ancorada nos rótulos impressos, com cada lado do documento tratado separadamente
-- Recorte automático de foto, assinatura e polegar
-- Campos complementares do RG: DNI, título de eleitor, CTPS, NIS/PIS, CNS, CNH, registro civil e outros
+## O que faz
 
-**Validação**
-- Dígito verificador do CPF, com nova leitura da região quando o valor não fecha
-- Datas, coerência entre datas e campos obrigatórios por tipo de documento
-- Confiança do OCR por campo, indicada na tela de revisão
+- Identifica o tipo do documento, corrige perspectiva e orientação, separa frente e verso e recorta foto, assinatura e polegar.
+- Mostra a confiança do OCR em cada campo; o CPF passa pelo dígito verificador e é relido quando não fecha.
+- Consolida pessoas por CPF. Lista com busca, filtros na URL, paginação e exclusão com confirmação digitada.
+- Envio remoto: um link de uso único para a própria pessoa fotografar o documento pelo celular.
+- Contas por e-mail com convite, confirmação de e-mail, redefinição de senha, 2FA (TOTP), papéis configuráveis (administrador, revisor, leitor), bloqueio temporário e sessões revogáveis.
+- Auditoria de todas as ações, inclusive visualizações, com usuário, IP e horário.
+- Retenção com exclusão automática, compressão opcional dos originais e limites de envio configuráveis em execução.
+- Interface em português e inglês, tema claro e escuro, utilizável no celular com uma mão.
 
-**Cadastro**
-- Pessoas consolidadas por CPF, com todos os documentos vinculados
-- Busca por nome ou CPF, filtros por tipo, status e período, ordenação e paginação no servidor
-- Filtros refletidos na URL, para compartilhar ou recarregar sem perder o contexto
-- Exclusão completa de documento ou pessoa, com confirmação digitada para exclusões em lote
-- Edição e verificação dos dados consolidados da pessoa, com os dados complementares de todos os documentos
-- Link de envio remoto: gere um link de uso único e a própria pessoa envia frente e verso pelo celular
-- Auditoria de todas as ações, inclusive visualizações, com IP, detalhes e horário no fuso configurado
+## Como funciona
 
-**Segurança e privacidade (LGPD)**
-- OCR local com RapidOCR (modelos PP-OCRv5 em ONNX), sem serviços externos, em CPU ou GPU
-- Imagens originais, processadas e recortes criptografados com AES-256-GCM
-- Login com senhas em argon2, sessão persistente com refresh token rotativo, lista de sessões ativas, limite de tentativas e proteção contra CSRF
+```
+apps/api   FastAPI, SQLAlchemy 2, Alembic, RapidOCR (PP-OCRv5 em ONNX Runtime) e Tesseract de reserva
+apps/web   Next.js 16 (App Router), React 19, TanStack Query, Zod, CSS Modules
+```
 
-**Interface**
-- React com tema claro e escuro, navegação lateral recolhível e menu em gaveta no celular
-- Atualização automática das listas quando documentos chegam de outro aparelho
+O navegador fala só com o Next. Ele encaminha `/api/*` para a FastAPI por rewrites, então não há CORS e os cookies de sessão (HttpOnly, SameSite=Strict) são emitidos pela própria API. Os tipos do cliente são gerados do OpenAPI da FastAPI.
 
-## Requisitos
+O banco padrão no Docker é PostgreSQL. SQLite continua suportado pelo mesmo código e pelas mesmas migrations, útil para rodar sem Docker; os testes passam nos dois.
 
-| | Mínimo | Recomendado |
-| --- | --- | --- |
-| Processador | x86-64 com 4 núcleos e suporte a AVX | 6 núcleos ou mais |
-| Memória RAM | 4 GB livres (o OCR em CPU chegou a 1,6 GB de pico no benchmark) | 8 GB ou mais |
-| Placa de vídeo | Não é necessária | GPU compatível com DirectML 12 (AMD, Intel ou NVIDIA) no Windows, ou NVIDIA com CUDA |
-| Memória de vídeo | — | 2 GB ou mais (o OCR usou cerca de 1,1 GB de VRAM no benchmark) |
-| Disco | 3 GB (imagem Docker de 1,5 GB, mais documentos) | 10 GB ou mais, conforme o volume de imagens guardadas |
-| Python | 3.12 (sem Docker) | 3.12 |
-| Sistema | Windows 10 build 18362 (1903) ou superior, ou Linux x86-64 | Windows 10 22H2 / Windows 11, ou Ubuntu 22.04+ |
-| Docker | Docker Desktop com WSL2, ou Docker Engine + Compose v2 | — |
+## Rodar com Docker
+
+Requisitos: Docker com Compose v2.
+
+```bash
+git clone <url-do-repositorio> identa
+cd identa
+cp .env.example .env
+```
+
+No `.env`, preencha `POSTGRES_PASSWORD`, `IDENTA_SECRET_KEY` e `IDENTA_ENCRYPTION_KEY`. Para gerar as duas chaves:
+
+```bash
+docker compose run --rm --no-deps api python -m identa.cli generate-key
+```
+
+Depois:
+
+```bash
+docker compose up -d --build
+```
+
+Abra `http://127.0.0.1:8090`. Na primeira visita aparece a configuração inicial, que cria o administrador. Os demais usuários entram por convite em *Usuários*.
+
+Só a interface é publicada no host. Para acessar de outros aparelhos da rede, use `IDENTA_BIND=0.0.0.0`. Para expor na internet, coloque um proxy com HTTPS na frente e ligue `IDENTA_SECURE_COOKIES=true`.
+
+E-mail em desenvolvimento: `docker compose --profile dev up -d mailpit` e, no `.env`, `IDENTA_SMTP_HOST=mailpit`, `IDENTA_SMTP_PORT=1025`, `IDENTA_SMTP_SECURITY=none`, `IDENTA_SMTP_FROM=identa@exemplo.com.br`. As mensagens aparecem em `http://127.0.0.1:8025`. Sem SMTP, convites e links de redefinição aparecem na tela para o administrador copiar.
+
+Todas as variáveis estão em [.env.example](.env.example) e [docs/configuracao.md](docs/configuracao.md).
+
+## Rodar no Windows sem Docker
+
+É o caminho para usar a GPU: o Docker Desktop não repassa GPUs AMD e Intel para containers.
+
+Requisitos: Python 3.12, Node.js 20.9 ou mais novo, driver de vídeo atualizado.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e "apps/api[gpu-directml,tesseract,dev]"
+copy .env.example apps\api\.env
+python -m identa.cli generate-key
+python -m identa.cli generate-key
+```
+
+Cole as chaves em `IDENTA_SECRET_KEY` e `IDENTA_ENCRYPTION_KEY` no `apps\api\.env`. O banco padrão fora do Docker é SQLite em `apps\api\data`. Então, em um terminal:
+
+```powershell
+cd apps\api
+mkdir data
+python -m identa.cli download-models
+alembic upgrade head
+uvicorn identa.main:create_app --factory --host 127.0.0.1 --port 8000
+```
+
+E em outro:
+
+```powershell
+cd apps\web
+npm ci
+npm run build
+npm run start
+```
+
+A interface fica em `http://127.0.0.1:3000`. Para CPU sem GPU, troque `gpu-directml` por `cpu`; para NVIDIA, `gpu-cuda`. Os três extras não podem ser instalados juntos.
+
+`python -m identa.cli ocr-status` mostra o dispositivo escolhido, os providers do ONNX Runtime e a placa de vídeo usada. A mesma informação, com o tempo médio por imagem, aparece em *Configurações > Motor de OCR*.
 
 ## Hardware testado
 
-Valores medidos com `scripts/benchmark.py` nesta máquina, com imagens sintéticas de documento. Relatórios completos em [docs/benchmarks.md](docs/benchmarks.md) (Windows nativo, CPU e GPU) e [docs/benchmarks-docker.md](docs/benchmarks-docker.md) (Docker, só CPU).
+Medido com `scripts/benchmark.py` em imagens sintéticas. Relatórios completos: [docs/benchmarks.md](docs/benchmarks.md) (Windows nativo) e [docs/benchmarks-docker.md](docs/benchmarks-docker.md) (Docker, CPU).
 
-| CPU | GPU | RAM | Sistema | Driver da GPU | Python | Tempo médio por imagem, CPU | Tempo médio por imagem, GPU |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| AMD Ryzen 5 1600 (6 núcleos / 12 threads) | AMD Radeon RX 590 GME, 8 GB | 19,9 GB | Windows 10 Pro 22H2, build 19045 | 31.0.21924.61 (Adrenalin 26.1.1) | 3.12.15 | 1.854 a 2.159 ms (nativo) · 1.772 a 2.107 ms (Docker) | 766 a 776 ms (DirectML, nativo) |
+| CPU | GPU | RAM | Sistema | Tempo por imagem, CPU | Tempo por imagem, GPU |
+| --- | --- | --- | --- | --- | --- |
+| AMD Ryzen 5 1600AF (6 núcleos / 12 threads) | AMD Radeon RX 590 GME, 8 GB, driver 31.0.21924.61 | 19,9 GB | Windows 10 Pro 22H2 | 1.854 a 2.159 ms nativo, 1.772 a 2.107 ms no Docker | 766 a 776 ms (DirectML) |
 
-As faixas cobrem os lotes de 1, 8 e 32 imagens. Os tempos variam entre execuções conforme a carga do Windows: uma rodada anterior na mesma máquina mediu 2.527 a 3.032 ms na CPU e 574 a 734 ms na GPU. Em todas as rodadas e em todos os lotes a GPU foi mais rápida, de 2,4 a 5,2 vezes.
+Suporte a GPU: AMD, Intel e NVIDIA via DirectML no Windows (só a AMD acima foi testada) e NVIDIA via CUDA (implementado, não testado). Detalhes e solução de problemas em [docs/gpu.md](docs/gpu.md).
 
-## Suporte a GPU
+## Backup e restauração
 
-O OCR roda com ONNX Runtime e modelos PP-OCRv5 convertidos para ONNX (RapidOCR). A variável `GREEN_OCR_OCR_DEVICE` aceita:
-
-- `auto` (padrão): testa a GPU na inicialização. Se ela não iniciar, se não houver VRAM suficiente ou se for mais lenta que a CPU num teste rápido, usa a CPU e registra o motivo no log e na tela de Configurações.
-- `cpu`: sempre CPU.
-- `gpu`: usa a GPU mesmo que a CPU seja mais rápida; se não houver GPU disponível, cai para a CPU e informa o motivo.
-
-| Plataforma | Backend | Extra de instalação | Situação |
-| --- | --- | --- | --- |
-| AMD no Windows | DirectML | `.[gpu-directml]` | Testado na RX 590 (Polaris), driver 31.0.21924.61 |
-| Intel no Windows | DirectML | `.[gpu-directml]` | Não testado; usa o mesmo caminho da AMD |
-| NVIDIA no Windows | DirectML | `.[gpu-directml]` | Não testado; usa o mesmo caminho da AMD |
-| NVIDIA no Linux ou Windows | CUDA | `.[gpu-cuda]` | Implementado e não testado (sem placa NVIDIA disponível) |
-| AMD no Linux | ROCm | — | Não suportado; a RX 590 (Polaris) não é aceita pelas versões atuais do ROCm |
-| Qualquer CPU x86-64 | CPU | `.[cpu]` | Testado, nativo no Windows e no Docker |
-| Docker no Windows | CPU | imagem padrão | Testado. O Docker Desktop não repassa GPUs AMD ou Intel para o container, então o modo GPU roda nativo |
-
-O motor alternativo é o Tesseract (`GREEN_OCR_OCR_ENGINE=tesseract`, extra `.[tesseract]` e o programa `tesseract` com o idioma `por`). Ele também é usado automaticamente quando o RapidOCR não consegue iniciar. A imagem Docker já traz o Tesseract instalado.
-
-## Instalação no Windows sem Docker (com GPU)
-
-1. Atualize o driver da placa de vídeo (AMD Software: Adrenalin Edition, Intel Arc/Iris ou NVIDIA).
-2. Instale o Python 3.12 de [python.org](https://www.python.org/downloads/windows/) marcando "Add python.exe to PATH". Desative o atalho da Microsoft Store em *Configurações > Aplicativos > Aliases de execução do aplicativo* se `python` abrir a loja.
-3. Instale o Node.js 22 LTS de [nodejs.org](https://nodejs.org/) (só para compilar a interface).
-4. No PowerShell, dentro da pasta do projeto:
-
-```powershell
-python -m venv .venv-gpu
-.\.venv-gpu\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -e ".[gpu-directml,dev]"
-copy .env.example .env
-python -m app.cli generate-key
-python -m app.cli generate-key
-```
-
-5. Cole as duas chaves geradas em `GREEN_OCR_ENCRYPTION_KEY` e `GREEN_OCR_SECRET_KEY` no `.env`.
-6. Compile a interface, prepare o banco e crie o usuário:
-
-```powershell
-cd frontend
-npm ci
-npm run build
-cd ..
-python -m app.cli download-models
-alembic upgrade head
-python -m app.cli create-user admin
-```
-
-7. Suba o servidor:
-
-```powershell
-uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8090
-```
-
-Para CPU sem GPU, troque `.[gpu-directml]` por `.[cpu]`. Para NVIDIA com CUDA, use `.[gpu-cuda]` e instale o CUDA e o cuDNN compatíveis com a versão do `onnxruntime-gpu`.
-
-## Instalação com Docker (CPU)
-
-Requisitos: Docker Desktop (Windows, com WSL2) ou Docker Engine com Compose v2 (Linux).
+O que precisa de backup: o banco, o volume `storage` (imagens) e a `IDENTA_ENCRYPTION_KEY`. Sem a chave as imagens do backup são ilegíveis.
 
 ```bash
-git clone <url-do-repositorio> registra
-cd registra
-cp .env.example .env
-docker compose run --rm --no-deps app python -m app.cli generate-key
+docker compose exec -T postgres pg_dump -U identa -Fc identa > identa.dump
+docker run --rm -v identa_storage:/data -v "$PWD":/backup alpine:3.24 tar czf /backup/storage.tar.gz -C /data .
 ```
 
-Preencha `GREEN_OCR_ENCRYPTION_KEY` e `GREEN_OCR_SECRET_KEY` no `.env` com chaves geradas, depois:
+Restaurar num servidor novo, com o mesmo `.env`:
 
 ```bash
-docker compose up -d --build app
-docker compose exec app python -m app.cli create-user admin
+docker compose up -d postgres
+docker compose exec -T postgres pg_restore -U identa -d identa --clean --if-exists < identa.dump
+docker run --rm -v identa_storage:/data -v "$PWD":/backup alpine:3.24 sh -c "tar xzf /backup/storage.tar.gz -C /data && chown -R 10001 /data"
+docker compose up -d
 ```
 
-A aplicação fica em `http://127.0.0.1:8090`. Para acessar de outros aparelhos da rede, defina `GREEN_OCR_BIND=0.0.0.0` no `.env`. Para expor na internet, coloque um proxy com HTTPS na frente. A imagem já vem com os modelos de OCR e o Tesseract, e roda sempre em CPU.
+Migrar uma instalação SQLite para PostgreSQL:
 
-> Guarde a `GREEN_OCR_ENCRYPTION_KEY` em local seguro. Sem ela as imagens não podem ser lidas.
-
-Para desenvolver a interface com recarga automática, rode `npm run dev` dentro de `frontend/`; as chamadas para `/api` são encaminhadas para a porta 8090.
-
-## Como verificar se a GPU está sendo usada
-
-- **Na interface:** em *Administração > Motor de OCR* aparecem o dispositivo em uso, o motivo da escolha, os providers ativos do ONNX Runtime, o adaptador de vídeo usado (e os demais adaptadores do sistema) e o tempo médio por leitura. Com a GPU ativa, os providers incluem `DmlExecutionProvider` e o adaptador é a placa dedicada.
-- **No terminal:**
-
-```powershell
-python -m app.cli ocr-status
+```bash
+docker compose run --rm --no-deps -v "$PWD/data:/import" api python -m identa.cli sqlite-to-postgres --source sqlite:////import/identa.db --target "postgresql://identa:SENHA@postgres:5432/identa"
 ```
 
-- **No log do servidor:** na inicialização aparece uma linha como `OCR em GPU via DirectML (AMD Radeon RX590 GME): GPU mais rápida no teste inicial (229 ms contra 908 ms na CPU)`.
-- **No Gerenciador de Tarefas:** na aba *Desempenho*, a GPU dedicada mostra uso de "Compute" ou "3D" e memória dedicada ocupada enquanto documentos são processados.
-- **Benchmark:** `python scripts/benchmark.py` mede CPU e GPU na sua máquina e grava `docs/benchmarks.md`.
-
-<img src="docs/screenshots/ocr-gpu.png" alt="Painel do motor de OCR usando a RX 590 via DirectML" width="640">
-
-## Solução de problemas
-
-**Driver desatualizado.** Sintomas: o modo `auto` registra "falha ao iniciar a GPU" ou `DmlExecutionProvider` não aparece entre os providers. O DirectML exige driver com suporte a DirectX 12. Atualize pelo AMD Software (Adrenalin), Intel Driver & Support Assistant ou GeForce Experience, reinicie e confira com `python -m app.cli ocr-status`.
-
-**Conflito entre `onnxruntime` e `onnxruntime-directml`.** Os dois pacotes instalam os mesmos arquivos e o último instalado sobrescreve o outro, o que pode fazer o DirectML sumir sem erro. O sistema detecta e mostra um aviso no `ocr-status`, no log e na tela de Configurações. Para corrigir, desinstale todos e reinstale apenas um extra:
-
-```powershell
-pip uninstall -y onnxruntime onnxruntime-directml onnxruntime-gpu
-pip install -e ".[gpu-directml]"
-```
-
-Para voltar à CPU, troque o último comando por `pip install -e ".[cpu]"`.
-
-**Falta de VRAM.** O OCR usou cerca de 1,1 GB de VRAM no benchmark. Se a placa tiver menos de 1 GB dedicado, o modo `auto` usa a CPU. Se outros programas ocuparem a VRAM (jogos, editores de vídeo), a inicialização pode falhar com erro de memória; o modo `auto` então cai para a CPU e registra o motivo. Feche os programas e reinicie o servidor, ou force `GREEN_OCR_OCR_DEVICE=cpu`.
-
-**GPU integrada escolhida no lugar da dedicada.** O sistema lista os adaptadores pelo DXGI, descarta o renderizador de software da Microsoft e escolhe o adaptador com mais memória dedicada, que normalmente é a placa dedicada. Confira em *Adaptador em uso*. Se ainda assim a integrada for usada, defina em *Configurações do Windows > Sistema > Tela > Elementos gráficos* a preferência "Alto desempenho" para o `python.exe` do ambiente virtual.
-
-**`python` abre a Microsoft Store.** O Windows tem um atalho que substitui o Python. Desative-o em *Aliases de execução do aplicativo* ou chame o Python pelo caminho completo.
-
-## Limitações conhecidas
-
-- O modo GPU com placas AMD e Intel só funciona no Windows nativo (DirectML). O Docker Desktop não repassa essas GPUs ao container.
-- A RX 590 (Polaris) não é suportada pelo ROCm, então não há aceleração AMD no Linux para esta placa.
-- O caminho CUDA está implementado, mas não foi testado por falta de uma placa NVIDIA.
-- A inicialização no modo `auto` leva alguns segundos a mais, porque mede a GPU e a CPU antes de escolher.
-- O DirectML processa uma imagem por vez; lotes maiores não reduziram o tempo por imagem no benchmark.
-- Os pacotes `onnxruntime` e `onnxruntime-directml` não podem coexistir no mesmo ambiente.
-- O pacote `onnxruntime-directml` costuma sair depois do `onnxruntime` comum; no benchmark, a CPU dentro do Docker (onnxruntime 1.30) foi um pouco mais rápida que a CPU nativa com o pacote DirectML (1.24).
+O comando exige o PostgreSQL vazio, copia todas as tabelas, ajusta as sequências e confere as contagens. As imagens não mudam de lugar; copie o diretório de armazenamento para o volume.
 
 ## Testes
 
 ```bash
-docker compose --profile tests run --rm --build tests
+docker compose --profile tests run --rm tests
 ```
 
-Sem Docker, no Windows, a mesma suíte roda com `python -m pytest`; nesse caso também roda o teste que confirma o DirectML ativo na placa dedicada.
-
-A suíte cobre validadores (CPF, datas, regras por documento), parsers com layouts fictícios, MRZ, criptografia, migrations, pré-processamento de imagem, API, autenticação e o pipeline completo com o OCR real sobre um RG fictício fotografado em perspectiva.
-
-Para popular uma instância de demonstração com milhares de cadastros fictícios:
+Roda o lint e a suíte da API em PostgreSQL e em SQLite. Fora do Docker:
 
 ```bash
-docker compose exec app python scripts/seed_demo.py --username admin --password '<senha>'
+cd apps/api && pytest
+cd apps/web && npm run lint && npm run typecheck && npm test
+cd apps/web && npx playwright install chromium && npx playwright test --project=setup --project=flows --project=responsive
 ```
+
+O Playwright sobe a API com dados fictícios e um build de produção da interface. O teste de responsividade falha se qualquer rota tiver rolagem horizontal em 360, 375, 768, 1024, 1280 e 1920 px, e em 640 px (1280 com zoom de 200%), ou se um alvo de toque tiver menos de 44 px em telas pequenas. `SCREENSHOTS=1 npx playwright test --project=setup --project=screenshots` regenera as capturas desta página; `python scripts/flow_gif.py` monta o GIF.
+
+## Limitações
+
+- RG, CNH e CPF brasileiros. Os layouts de RG variam por estado; modelos muito diferentes dos testados (SP, MG e o modelo nacional) podem sair com campos vazios e precisam de revisão manual.
+- A qualidade do OCR depende da foto. Documentos plastificados com reflexo e fotos tremidas são a maior fonte de erro.
+- GPU AMD e Intel só no Windows nativo. No Docker o OCR roda sempre em CPU.
+- O caminho CUDA não foi testado por falta de placa NVIDIA.
+- A API roda em um processo; o limite de tentativas por IP fica em memória e zera ao reiniciar (o bloqueio por conta fica no banco).
+- O motivo da escolha de dispositivo de OCR em *Configurações* aparece em português mesmo com a interface em inglês.
+- A verificação de sessão no Next (`proxy.ts`) só checa a presença do cookie; a validação real é feita pela API em cada requisição.
 
 ## Estrutura
 
 ```
-app/
-  auth/        login, sessões e limite de tentativas
-  db/          modelos SQLAlchemy
+apps/api/identa/
+  auth/        contas, sessões, convites, 2FA e permissões
+  db/          modelos, sessão e cópia SQLite para PostgreSQL
   imaging/     pré-processamento e recortes
-  ocr/         motores de OCR, escolha de dispositivo (CPU/GPU) e orientação
-  parsers/     um parser por tipo de documento, classificador e MRZ
-  services/    processamento, revisão, exclusão e consultas paginadas
-  storage/     armazenamento criptografado
-  validators/  CPF, datas e regras
-  web/         API
-frontend/      interface em React
-migrations/    migrations versionadas (Alembic)
-scripts/       benchmark, dados de demonstração e capturas de tela
-tests/
+  mail/        envio por SMTP e textos dos e-mails
+  ocr/         motores, escolha de dispositivo e status
+  parsers/     um parser por tipo de documento
+  services/    documentos, pessoas, auditoria, retenção e configurações
+apps/api/migrations/   migrations Alembic
+apps/web/src/app/      rotas do App Router
+apps/web/e2e/          testes Playwright
+docs/                  configuração, GPU, benchmarks e capturas
 ```
-
-Para adicionar um novo tipo de documento, crie um parser em `app/parsers/` com `@register`, declare os campos e as palavras-chave de identificação. O pipeline, a API e a interface passam a usá-lo sem outras mudanças.
-
-## Roadmap
-
-- Passaporte e RNE usando o parser de MRZ já existente
-- Validar o caminho CUDA numa placa NVIDIA
-- Leitura do QR Code da CNH digital
-- Módulo de admissão: vagas, empresas e status do processo vinculados às pessoas
-- Exportação do cadastro em CSV
-- Usuários com perfis de acesso diferentes
 
 ## Licença
 
