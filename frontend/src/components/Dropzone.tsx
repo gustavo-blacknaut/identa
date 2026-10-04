@@ -1,4 +1,4 @@
-import { Camera, RefreshCw } from "lucide-react";
+import { ImagePlus, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type DropzoneProps = {
@@ -23,23 +23,26 @@ export function Dropzone({ label, hint, file, onChange }: DropzoneProps) {
 
   return (
     <label className={`dropzone${preview ? " has-image" : ""}`}>
-      <input type="file" accept="image/*" onChange={(event) => onChange(event.target.files?.[0] ?? null)} />
-      <span className="dropzone-tag badge">{label}</span>
+      <input
+        type="file"
+        accept="image/*"
+        aria-label={`${label}: ${hint}`}
+        onChange={(event) => onChange(event.target.files?.[0] ?? null)}
+      />
+      {preview && <span className="dropzone-label">{label}</span>}
       {preview ? (
         <>
-          <img src={preview} alt={`Prévia: ${label}`} />
-          <span className="dropzone-change button button-secondary">
-            <RefreshCw size={16} />
-            Trocar foto
+          <img src={preview} alt="" />
+          <span className="button button-secondary dropzone-replace">
+            <RefreshCw size={14} strokeWidth={1.75} />
+            Trocar
           </span>
         </>
       ) : (
         <>
-          <span className="dropzone-icon">
-            <Camera size={26} />
-          </span>
+          <ImagePlus size={28} strokeWidth={1.5} />
           <span className="dropzone-title">{label}</span>
-          <span className="dropzone-hint">{hint}</span>
+          <span>{hint}</span>
         </>
       )}
     </label>

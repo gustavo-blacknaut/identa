@@ -1,9 +1,15 @@
-import { Lightbulb, ScanLine, ShieldCheck, Sparkles, Sun, Upload } from "lucide-react";
+import { Check, ScanText, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { PageHead } from "../components/AppShell";
 import { Dropzone } from "../components/Dropzone";
-import { PageHeader } from "../components/Navbar";
+
+const CHECKLIST = [
+  "Documento inteiro na foto, sem cortar as bordas",
+  "Sem reflexo ou sombra sobre o texto",
+  "Em pé ou deitado: a orientação é corrigida automaticamente",
+];
 
 export function UploadPage() {
   const navigate = useNavigate();
@@ -14,10 +20,6 @@ export function UploadPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!front && !back) {
-      setError("Envie pelo menos uma foto do documento.");
-      return;
-    }
     const form = new FormData();
     if (front) form.append("front", front);
     if (back) form.append("back", back);
@@ -33,53 +35,46 @@ export function UploadPage() {
   };
 
   return (
-    <>
-      <PageHeader
-        title="Enviar documento"
-        icon={Upload}
-        subtitle="RG, CNH ou CPF. O tipo é identificado automaticamente."
-      />
-      <form className="card" onSubmit={submit}>
-        {error && <div className="alert alert-error">{error}</div>}
-        <div className="upload-grid">
-          <Dropzone label="Frente" hint="Toque para tirar uma foto ou escolher um arquivo" file={front} onChange={setFront} />
-          <Dropzone label="Verso" hint="Toque para tirar uma foto ou escolher um arquivo" file={back} onChange={setBack} />
+    <div className="page">
+      <PageHead title="Novo documento" description="RG, CNH ou cartão CPF. O tipo é identificado automaticamente." />
+      <form className="panel narrow" onSubmit={submit}>
+        <div className="panel-body">
+          {error && <div className="alert alert-danger">{error}</div>}
+          <div className="upload">
+            <Dropzone label="Frente" hint="Tirar foto ou escolher arquivo" file={front} onChange={setFront} />
+            <Dropzone label="Verso" hint="Tirar foto ou escolher arquivo" file={back} onChange={setBack} />
+          </div>
+          <ul className="checklist">
+            {CHECKLIST.map((item) => (
+              <li key={item}>
+                <Check size={16} strokeWidth={2} />
+                {item}
+              </li>
+            ))}
+          </ul>
         </div>
-        <ul className="tips">
-          <li>
-            <ScanLine size={18} />
-            Enquadre o documento inteiro, sem cortar as bordas.
-          </li>
-          <li>
-            <Sun size={18} />
-            Evite reflexo e sombra sobre o documento.
-          </li>
-          <li>
-            <Sparkles size={18} />
-            Em pé ou deitado: a orientação é corrigida sozinha.
-          </li>
-        </ul>
-        <button className="button button-block button-lg" type="submit" disabled={busy || (!front && !back)}>
-          <ScanLine size={20} />
-          Extrair dados
-        </button>
-        <p className="privacy-note">
-          <ShieldCheck size={16} />
-          As fotos originais são guardadas criptografadas neste servidor.
-        </p>
+        <div className="form-footer">
+          <span className="footer-note">
+            <ShieldCheck size={14} strokeWidth={1.75} />
+            Originais guardados criptografados neste servidor
+          </span>
+          <button className="button" type="submit" disabled={busy || (!front && !back)}>
+            <ScanText size={16} strokeWidth={1.75} />
+            Extrair dados
+          </button>
+        </div>
       </form>
-
       {busy && (
-        <div className="overlay">
-          <div className="overlay-box">
-            <div className="spinner" />
-            <strong>Lendo o documento…</strong>
+        <div className="processing" role="status">
+          <div className="processing-card">
+            <span className="spinner" />
             <span>
-              <Lightbulb size={14} /> Corrigindo orientação, extraindo campos e validando o CPF.
+              <strong>Lendo o documento</strong>
+              <span>Corrigindo orientação, extraindo campos e validando o CPF.</span>
             </span>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

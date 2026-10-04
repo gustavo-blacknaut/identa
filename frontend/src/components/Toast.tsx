@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CircleAlert, CircleCheck } from "lucide-react";
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 
 type ToastTone = "ok" | "error";
@@ -22,8 +22,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`toast toast-${toast.tone}`}>
-            {toast.tone === "ok" ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+          <div key={toast.id} className="toast">
+            {toast.tone === "ok" ? <CircleCheck size={16} /> : <CircleAlert size={16} />}
             {toast.message}
           </div>
         ))}
