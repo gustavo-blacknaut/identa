@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     encryption_key: str = Field(default="", description="Chave AES-256 em base64 urlsafe (32 bytes)")
     secret_key: str = ""
     ocr_engine: str = "paddle"
+    ocr_device: str = "cpu"
+    access_minutes: int = 15
+    refresh_days: int = 30
+    scan_link_hours: int = 48
     max_upload_mb: int = 15
     frontend_dir: Path = Path("./frontend/dist")
 

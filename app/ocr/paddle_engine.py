@@ -8,12 +8,13 @@ from app.ocr.base import TextBox
 class PaddleOcrEngine:
     name = "paddle"
 
-    def __init__(self, detection_side_limit: int = 1280):
+    def __init__(self, detection_side_limit: int = 1280, device: str = "cpu"):
         self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paddle-ocr")
-        self._reader = self._worker.submit(self._create_reader, detection_side_limit).result()
+        self._reader = self._worker.submit(self._create_reader, detection_side_limit, device).result()
+        self.device = device
 
     @staticmethod
-    def _create_reader(detection_side_limit: int):
+    def _create_reader(detection_side_limit: int, device: str):
         from paddleocr import PaddleOCR
 
         return PaddleOCR(
@@ -24,7 +25,8 @@ class PaddleOcrEngine:
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
-            enable_mkldnn=True,
+            device=device,
+            enable_mkldnn=device == "cpu",
         )
 
     def read(self, image_bgr: np.ndarray) -> list[TextBox]:
