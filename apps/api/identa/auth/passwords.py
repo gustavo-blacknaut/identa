@@ -1,0 +1,33 @@
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
+
+_hasher = PasswordHasher()
+DUMMY_HASH = _hasher.hash("dummy-password-for-timing")
+MAXIMUM_PASSWORD_LENGTH = 256
+
+
+class WeakPasswordError(ValueError):
+    pass
+
+
+def hash_password(password: str) -> str:
+    return _hasher.hash(password)
+
+
+def verify_password(password_hash: str | None, password: str) -> bool:
+    try:
+        return _hasher.verify(password_hash or DUMMY_HASH, password) and password_hash is not None
+    except (VerificationError, InvalidHashError):
+        return False
+
+
+def check_password_policy(password: str, minimum_length: int, require_mixed: bool, email: str = "") -> None:
+    if len(password) < minimum_length:
+        raise WeakPasswordError(f"A senha precisa ter pelo menos {minimum_length} caracteres.")
+    if len(password) > MAXIMUM_PASSWORD_LENGTH:
+        raise WeakPasswordError(f"A senha pode ter no máximo {MAXIMUM_PASSWORD_LENGTH} caracteres.")
+    if require_mixed and not (any(char.isalpha() for char in password) and any(not char.isalpha() for char in password)):
+        raise WeakPasswordError("A senha precisa misturar letras com números ou símbolos.")
+    local_part = email.split("@", 1)[0].lower()
+    if len(local_part) >= 4 and local_part in password.lower():
+        raise WeakPasswordError("A senha não pode conter o seu e-mail.")
