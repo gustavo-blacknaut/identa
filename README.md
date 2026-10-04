@@ -42,12 +42,14 @@ Nenhuma imagem ou dado sai do servidor: o OCR roda localmente e os arquivos são
 - Busca por nome ou CPF, filtros por tipo, status e período, ordenação e paginação no servidor
 - Filtros refletidos na URL, para compartilhar ou recarregar sem perder o contexto
 - Exclusão completa de documento ou pessoa, com confirmação digitada para exclusões em lote
-- Registro de auditoria de acessos e alterações
+- Edição e verificação dos dados consolidados da pessoa, com os dados complementares de todos os documentos
+- Link de envio remoto: gere um link de uso único e a própria pessoa envia frente e verso pelo celular
+- Auditoria de todas as ações, inclusive visualizações, com IP, detalhes e horário no fuso configurado
 
 **Segurança e privacidade (LGPD)**
 - OCR local com PaddleOCR, sem serviços externos
 - Imagens originais, processadas e recortes criptografados com AES-256-GCM
-- Login com senhas em argon2, sessão em cookie `HttpOnly` e `SameSite=Strict`, limite de tentativas e proteção contra CSRF
+- Login com senhas em argon2, sessão persistente com refresh token rotativo, lista de sessões ativas, limite de tentativas e proteção contra CSRF
 
 **Interface**
 - React com tema claro e escuro, navegação lateral recolhível e menu em gaveta no celular
@@ -139,6 +141,7 @@ Para adicionar um novo tipo de documento, crie um parser em `app/parsers/` com `
 ## Roadmap
 
 - Passaporte e RNE usando o parser de MRZ já existente
+- Aceleração por GPU NVIDIA (já configurável com `GREEN_OCR_OCR_DEVICE=gpu`)
 - Leitura do QR Code da CNH digital
 - Módulo de admissão: vagas, empresas e status do processo vinculados às pessoas
 - Exportação do cadastro em CSV
