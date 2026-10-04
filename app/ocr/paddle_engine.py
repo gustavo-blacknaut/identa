@@ -1,4 +1,4 @@
-import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -9,25 +9,30 @@ class PaddleOcrEngine:
     name = "paddle"
 
     def __init__(self, detection_side_limit: int = 1280):
+        self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paddle-ocr")
+        self._reader = self._worker.submit(self._create_reader, detection_side_limit).result()
+
+    @staticmethod
+    def _create_reader(detection_side_limit: int):
         from paddleocr import PaddleOCR
 
-        self._reader = PaddleOCR(
+        return PaddleOCR(
             text_detection_model_name="PP-OCRv5_mobile_det",
             text_recognition_model_name="latin_PP-OCRv5_mobile_rec",
             text_det_limit_type="max",
             text_det_limit_side_len=detection_side_limit,
-            use_doc_orientation_classify=True,
+            use_doc_orientation_classify=False,
             use_doc_unwarping=False,
             use_textline_orientation=False,
             enable_mkldnn=True,
         )
-        self._lock = threading.Lock()
 
     def read(self, image_bgr: np.ndarray) -> list[TextBox]:
-        with self._lock:
-            results = self._reader.predict(image_bgr)
+        return self._worker.submit(self._read_on_worker, image_bgr).result()
+
+    def _read_on_worker(self, image_bgr: np.ndarray) -> list[TextBox]:
         boxes: list[TextBox] = []
-        for result in results:
+        for result in self._reader.predict(image_bgr):
             for text, score, polygon in zip(result["rec_texts"], result["rec_scores"], result["rec_polys"], strict=False):
                 points = np.asarray(polygon, dtype=float).reshape(-1, 2)
                 x0, y0 = points.min(axis=0)
