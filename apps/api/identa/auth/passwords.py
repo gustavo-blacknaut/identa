@@ -1,3 +1,6 @@
+from functools import lru_cache
+from importlib import resources
+
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 
@@ -28,6 +31,14 @@ def check_password_policy(password: str, minimum_length: int, require_mixed: boo
         raise WeakPasswordError(f"A senha pode ter no máximo {MAXIMUM_PASSWORD_LENGTH} caracteres.")
     if require_mixed and not (any(char.isalpha() for char in password) and any(not char.isalpha() for char in password)):
         raise WeakPasswordError("A senha precisa misturar letras com números ou símbolos.")
+    if password.lower() in common_passwords():
+        raise WeakPasswordError("Esta senha aparece em listas de senhas vazadas. Escolha outra.")
     local_part = email.split("@", 1)[0].lower()
     if len(local_part) >= 4 and local_part in password.lower():
         raise WeakPasswordError("A senha não pode conter o seu e-mail.")
+
+
+@lru_cache
+def common_passwords() -> frozenset[str]:
+    text = resources.files("identa.auth").joinpath("data/common-passwords.txt").read_text(encoding="utf-8")
+    return frozenset(line.strip() for line in text.splitlines() if line.strip())

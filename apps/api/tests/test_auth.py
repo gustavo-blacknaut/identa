@@ -15,7 +15,12 @@ def test_password_hash_round_trip():
 
 @pytest.mark.parametrize(
     ("password", "message"),
-    [("curta1", "pelo menos"), ("somenteletrasaqui", "misturar"), ("maria.souza-2024", "e-mail")],
+    [
+        ("curta1", "pelo menos"),
+        ("somenteletrasaqui", "misturar"),
+        ("maria.souza-2024", "e-mail"),
+        ("1Q2W3E4R5T", "vazadas"),
+    ],
 )
 def test_password_policy(password, message):
     with pytest.raises(WeakPasswordError, match=message):
