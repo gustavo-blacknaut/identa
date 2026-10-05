@@ -15,6 +15,9 @@ MINIMUM_DOCUMENT_AREA_RATIO = 0.2
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP", "HEIF", "HEIC", "MPO"}
 FORMAT_NAMES = {"JPEG": "jpeg", "MPO": "jpeg", "PNG": "png", "WEBP": "webp", "HEIF": "heic", "HEIC": "heic"}
 DEFAULT_QUALITY = 88
+MAX_SIDE = 12_000
+MAX_PIXELS = 50_000_000
+Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 
 
 class InvalidImageError(ValueError):
@@ -33,17 +36,25 @@ class PreparedImage:
 def detect_format(content: bytes) -> str | None:
     try:
         with Image.open(io.BytesIO(content)) as image:
+            check_dimensions(image)
             return FORMAT_NAMES.get(image.format or "")
-    except (UnidentifiedImageError, OSError):
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         return None
+
+
+def check_dimensions(image: Image.Image) -> None:
+    width, height = image.size
+    if width > MAX_SIDE or height > MAX_SIDE or width * height > MAX_PIXELS:
+        raise InvalidImageError("Imagem com dimensões acima do permitido")
 
 
 def load_image(content: bytes) -> tuple[Image.Image, str]:
     try:
         image = Image.open(io.BytesIO(content))
         image_format = image.format or ""
+        check_dimensions(image)
         image.load()
-    except (UnidentifiedImageError, OSError) as error:
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
         raise InvalidImageError("Arquivo não é uma imagem válida") from error
     if image_format not in ALLOWED_FORMATS:
         raise InvalidImageError(f"Formato de imagem não suportado: {image_format}")
