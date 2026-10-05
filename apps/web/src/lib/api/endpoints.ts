@@ -9,7 +9,6 @@ export type DocumentSummary = Schemas["DocumentSummary"];
 export type DocumentDetail = Schemas["DocumentDetail"];
 export type Field = Schemas["FieldOut"];
 export type ImageInfo = Schemas["ImageOut"];
-export type DocumentType = Schemas["DocumentTypeOut"];
 export type AuditEntry = Schemas["AuditOut"];
 export type SessionInfo = Schemas["SessionOut"];
 export type SystemInfo = Schemas["SystemOut"];
@@ -78,7 +77,6 @@ export const api = {
   invite: (body: Schemas["InvitationIn"]) => unwrap(client.POST("/api/users/invitations", { body })),
   cancelInvitation: (id: number) =>
     unwrap(client.DELETE("/api/users/invitations/{invitation_id}", { params: { path: { invitation_id: id } } })),
-  documentTypes: () => unwrap(client.GET("/api/document-types")),
   people: (query: ListQuery) => unwrap(client.GET("/api/people", { params: { query } })) as Promise<Page<Person>>,
   person: (id: number) => unwrap(client.GET("/api/people/{person_id}", { params: { path: { person_id: id } } })),
   updatePerson: (id: number, values: Record<string, string | null>) =>
@@ -90,13 +88,8 @@ export const api = {
   document: (id: number) => unwrap(client.GET("/api/documents/{document_id}", { params: { path: { document_id: id } } })),
   saveDocument: (id: number, values: Record<string, string>) =>
     unwrap(client.PUT("/api/documents/{document_id}", { params: { path: { document_id: id } }, body: { values } })),
-  reprocess: (id: number, docType: string | null) =>
-    unwrap(
-      client.POST("/api/documents/{document_id}/reprocess", {
-        params: { path: { document_id: id } },
-        body: { doc_type: docType },
-      }),
-    ),
+  reprocess: (id: number) =>
+    unwrap(client.POST("/api/documents/{document_id}/reprocess", { params: { path: { document_id: id } } })),
   deleteDocument: (id: number) => unwrap(client.DELETE("/api/documents/{document_id}", { params: { path: { document_id: id } } })),
   upload: (form: FormData) => sendForm<DocumentDetail>("/api/documents", form),
   audit: (query: ListQuery) => unwrap(client.GET("/api/audit", { params: { query } })) as Promise<Page<AuditEntry>>,

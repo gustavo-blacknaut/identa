@@ -34,7 +34,9 @@ function display(value: unknown, t: Messages): string {
   return String(value ?? "");
 }
 
-function SettingsSection({ title, fields, info, hint }: { title: string; fields: FieldSpec[]; info: SettingsInfo; hint?: ReactNode }) {
+type SectionProps = { title: string; fields: FieldSpec[]; info: SettingsInfo; hint?: ReactNode; action?: ReactNode; children?: ReactNode };
+
+function SettingsSection({ title, fields, info, hint, action, children }: SectionProps) {
   const { t, setTimeZone } = useLocale();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -71,6 +73,7 @@ function SettingsSection({ title, fields, info, hint }: { title: string; fields:
     <form className="panel" onSubmit={submit} noValidate>
       <div className="panel-head">
         <h2>{title}</h2>
+        {action}
       </div>
       <div className="panel-body form-grid">
         {hint && <p className="muted flush span-2">{hint}</p>}
@@ -173,6 +176,7 @@ function SettingsSection({ title, fields, info, hint }: { title: string; fields:
         })}
         {error && <p className="field-error span-2 flush">{error}</p>}
       </div>
+      {children}
       <div className="panel-foot">
         <button className="button" type="submit" disabled={busy || changed.length === 0}>
           <Save size={16} strokeWidth={1.75} />
@@ -296,7 +300,7 @@ function RolesSection({ info }: { info: SettingsInfo }) {
   );
 }
 
-function OcrStatus() {
+function useOcrStatus() {
   const { t } = useLocale();
   const system = useQuery({ queryKey: ["system"], queryFn: api.system });
   const status = system.data?.ocr_status ?? {};
@@ -312,17 +316,19 @@ function OcrStatus() {
       return value === null || value === undefined || value === "" ? null : [label, String(value)];
     })
     .filter((row): row is [string, string] => row !== null);
-  return (
-    <section className="panel">
-      <div className="panel-head">
-        <h2>{t.settings.ocr}</h2>
-        <button className="button button-ghost" type="button" onClick={() => system.refetch()}>
-          <RefreshCw size={16} strokeWidth={1.75} className={system.isFetching ? "spin" : undefined} />
-          {t.settings.refresh}
-        </button>
-      </div>
-      {typeof status.warning === "string" && status.warning && <div className={`alert alert-warning ${styles.warning}`}>{status.warning}</div>}
-      <dl className="meta-list panel-body">
+  const containerized = status.adapters === "indisponível fora do Windows";
+  const warning = typeof status.warning === "string" && status.warning ? status.warning : null;
+  const refresh = (
+    <button className="button button-ghost" type="button" onClick={() => system.refetch()}>
+      <RefreshCw size={16} strokeWidth={1.75} className={system.isFetching ? "spin" : undefined} />
+      {t.settings.refresh}
+    </button>
+  );
+  const details = (
+    <>
+      {containerized && <div className={`alert alert-warning ${styles.warning}`}>{t.settings.dockerGpu}</div>}
+      {warning && <div className={`alert alert-warning ${styles.warning}`}>{warning}</div>}
+      <dl className={`meta-list panel-body ${styles.status}`}>
         {rows.map(([label, value]) => (
           <div key={label} className="contents">
             <dt>{label}</dt>
@@ -330,8 +336,9 @@ function OcrStatus() {
           </div>
         ))}
       </dl>
-    </section>
+    </>
   );
+  return { refresh, details };
 }
 
 function ServerSection() {
@@ -366,6 +373,7 @@ export default function SettingsPage() {
   const allowed = can("settings.manage");
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, enabled: allowed });
   const zones = useQuery({ queryKey: ["timezones"], queryFn: api.timezones, enabled: allowed, staleTime: Infinity });
+  const ocrStatus = useOcrStatus();
   if (!allowed) return <Forbidden />;
   const info = settings.data;
   if (!info) return <div className="spinner spinner-page" role="status" />;
@@ -379,7 +387,7 @@ export default function SettingsPage() {
       <PageHead title={t.settings.title} description={t.settings.description} />
       <div className={page.settings}>
         <SettingsSection
-          key={`${settings.dataUpdatedAt}`}
+          key={`instance-${settings.dataUpdatedAt}`}
           title={t.settings.instance}
           info={info}
           fields={[
@@ -391,14 +399,19 @@ export default function SettingsPage() {
         />
         <LogoSection info={info} />
         <SettingsSection
-          key={`${settings.dataUpdatedAt}`}
+          key={`ocr-${settings.dataUpdatedAt}`}
           title={t.settings.ocr}
           info={info}
-          fields={[{ key: "ocr_device", label: t.settings.ocrDevice, kind: "select", options: deviceOptions, hint: t.settings.ocrDeviceHint }]}
-        />
-        <OcrStatus />
+          action={ocrStatus.refresh}
+          fields={[
+            { key: "ocr_device", label: t.settings.ocrDevice, kind: "select", options: deviceOptions, hint: t.settings.ocrDeviceHint },
+            { key: "ocr_passes", label: t.settings.ocrPasses, kind: "number", min: 1, max: 4, hint: t.settings.ocrPassesHint },
+          ]}
+        >
+          {ocrStatus.details}
+        </SettingsSection>
         <SettingsSection
-          key={`${settings.dataUpdatedAt}`}
+          key={`uploads-${settings.dataUpdatedAt}`}
           title={t.settings.uploads}
           info={info}
           fields={[
@@ -409,14 +422,14 @@ export default function SettingsPage() {
           ]}
         />
         <SettingsSection
-          key={`${settings.dataUpdatedAt}`}
+          key={`retention-${settings.dataUpdatedAt}`}
           title={t.settings.retention}
           info={info}
           hint={t.settings.retentionHint}
           fields={[{ key: "retention_days", label: t.settings.retentionDays, kind: "number", min: 0, max: 36500 }]}
         />
         <SettingsSection
-          key={`${settings.dataUpdatedAt}`}
+          key={`security-${settings.dataUpdatedAt}`}
           title={t.settings.security}
           info={info}
           fields={[

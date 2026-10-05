@@ -244,8 +244,6 @@ export const en: Messages = {
     confirm: "Confirm review",
     saved: "Review saved.",
     processing: "Processing",
-    reprocessAs: "Reprocess as",
-    autoDetect: "Detect automatically",
     reprocess: "Reprocess OCR",
     reprocessing: "Reprocessing…",
     reprocessed: "Document reprocessed.",
@@ -474,6 +472,9 @@ export const en: Messages = {
     ocrDevice: "Device",
     devices: { auto: "Automatic (GPU when faster)", cpu: "CPU", gpu: "GPU" },
     ocrDeviceHint: "After a change the engine is prepared again on the next read.",
+    ocrPasses: "Reads per image",
+    ocrPassesHint: "Extra reads use the image with more contrast, in black and white or darkened, and only run when a field is empty, invalid or below 90% confidence.",
+    dockerGpu: "In Docker the OCR uses the CPU only. To use an AMD or Intel GPU, run the API on Windows with scripts/api-gpu.ps1.",
     refresh: "Refresh",
     ocrLabels: {
       engine: "Engine",

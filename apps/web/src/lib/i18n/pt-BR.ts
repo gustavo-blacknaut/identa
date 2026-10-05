@@ -243,8 +243,6 @@ export const ptBR = {
     confirm: "Confirmar revisão",
     saved: "Revisão salva.",
     processing: "Processamento",
-    reprocessAs: "Reprocessar como",
-    autoDetect: "Identificar automaticamente",
     reprocess: "Reprocessar OCR",
     reprocessing: "Reprocessando…",
     reprocessed: "Documento reprocessado.",
@@ -474,6 +472,9 @@ export const ptBR = {
     ocrDevice: "Dispositivo",
     devices: { auto: "Automático (GPU se for mais rápida)", cpu: "CPU", gpu: "GPU" },
     ocrDeviceHint: "Ao trocar, o motor é preparado de novo na próxima leitura.",
+    ocrPasses: "Leituras por imagem",
+    ocrPassesHint: "As leituras extras usam a imagem com mais contraste, em preto e branco ou escurecida, e só rodam quando algum campo vem vazio, inválido ou com confiança abaixo de 90%.",
+    dockerGpu: "No Docker o OCR usa só a CPU. Para usar a GPU AMD ou Intel, rode a API no Windows com scripts/api-gpu.ps1.",
     refresh: "Atualizar",
     ocrLabels: {
       engine: "Motor",

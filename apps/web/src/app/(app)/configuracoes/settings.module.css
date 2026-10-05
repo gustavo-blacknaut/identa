@@ -12,3 +12,4 @@
 @media (max-width: 1024px) {
   .inlineLink { min-height: 32px; }
 }
+.status { padding-top: 0; }

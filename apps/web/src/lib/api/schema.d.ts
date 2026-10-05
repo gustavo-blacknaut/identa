@@ -916,11 +916,6 @@ export interface components {
         };
         /** Body_upload_document_api_documents_post */
         Body_upload_document_api_documents_post: {
-            /**
-             * Doc Type
-             * @default
-             */
-            doc_type: string;
             /** Front */
             front?: string | null;
             /** Back */
@@ -1325,11 +1320,6 @@ export interface components {
         RecoveryCodesOut: {
             /** Recovery Codes */
             recovery_codes: string[];
-        };
-        /** ReprocessIn */
-        ReprocessIn: {
-            /** Doc Type */
-            doc_type?: string | null;
         };
         /** ResetIn */
         ResetIn: {
@@ -2647,11 +2637,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReprocessIn"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

@@ -32,11 +32,9 @@ export default function DocumentPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const detail = useQuery({ queryKey: ["document", documentId], queryFn: () => api.document(documentId), enabled: Number.isFinite(documentId) });
-  const types = useQuery({ queryKey: ["document-types"], queryFn: api.documentTypes, staleTime: Infinity });
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
-  const [reprocessType, setReprocessType] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [viewer, setViewer] = useState<string | null>(null);
   const document = detail.data;
@@ -91,7 +89,7 @@ export default function DocumentPage() {
   const reprocess = async () => {
     setReprocessing(true);
     try {
-      apply(await api.reprocess(document.id, reprocessType || null));
+      apply(await api.reprocess(document.id));
       toast(t.review.reprocessed);
     } catch (caught) {
       toast(caught instanceof Error ? caught.message : t.common.error, "error");
@@ -246,23 +244,10 @@ export default function DocumentPage() {
               {(editable || can("documents.delete")) && (
                 <div className="actions-row">
                   {editable && (
-                    <>
-                      <label className="field grow">
-                        <span className="field-label">{t.review.reprocessAs}</span>
-                        <select value={reprocessType} onChange={(event) => setReprocessType(event.target.value)}>
-                          <option value="">{t.review.autoDetect}</option>
-                          {(types.data ?? []).map((type) => (
-                            <option key={type.doc_type} value={type.doc_type}>
-                              {type.display_name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button className="button button-secondary" type="button" onClick={reprocess} disabled={reprocessing}>
-                        <RefreshCw size={16} strokeWidth={1.75} className={reprocessing ? "spin" : undefined} />
-                        {reprocessing ? t.review.reprocessing : t.review.reprocess}
-                      </button>
-                    </>
+                    <button className="button button-secondary" type="button" onClick={reprocess} disabled={reprocessing}>
+                      <RefreshCw size={16} strokeWidth={1.75} className={reprocessing ? "spin" : undefined} />
+                      {reprocessing ? t.review.reprocessing : t.review.reprocess}
+                    </button>
                   )}
                   {can("documents.delete") && (
                     <button className="button button-danger-ghost" type="button" onClick={() => setDeleting(true)}>
