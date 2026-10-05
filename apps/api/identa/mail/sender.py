@@ -60,5 +60,5 @@ class Mailer:
                     client.login(settings.smtp_user, settings.smtp_password)
                 client.send_message(message)
         except (OSError, smtplib.SMTPException) as error:
-            logger.warning("Falha ao enviar e-mail para %s: %s", mail.to, error)
+            logger.warning("Falha ao enviar e-mail: %s", type(error).__name__)
             raise MailError(f"Falha ao enviar e-mail: {error}") from error

@@ -42,7 +42,7 @@ O banco padrão no Docker é PostgreSQL. SQLite continua suportado pelo mesmo c�
 Requisitos: Docker com Compose v2.
 
 ```bash
-git clone <url-do-repositorio> identa
+git clone https://github.com/gustavo-blacknaut/identa.git
 cd identa
 cp .env.example .env
 ```
