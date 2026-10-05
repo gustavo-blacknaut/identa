@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from identa.security.crypto import EncryptionKeyError, decode_key
+from identa.security.crypto import EncryptionKeyError, KeyRing, decode_key
 
 ENV_PREFIX = "IDENTA_"
 MINIMUM_SECRET_LENGTH = 32
@@ -32,6 +32,7 @@ class Settings(OcrSettings):
     secret_key: str = ""
     encryption_enabled: bool = True
     encryption_key: str = ""
+    encryption_old_keys: str = ""
     storage_dir: Path = Path("./storage")
     public_url: str = ""
 
@@ -111,6 +112,8 @@ class Settings(OcrSettings):
         if self.encryption_enabled:
             try:
                 decode_key(self.encryption_key)
+                for key in self.previous_keys:
+                    decode_key(key)
             except EncryptionKeyError as error:
                 raise ValueError(
                     f"IDENTA_ENCRYPTION_KEY: {error}. Gere com python -m identa.cli generate-key"
@@ -119,6 +122,13 @@ class Settings(OcrSettings):
         if self.smtp_host and not self.smtp_from:
             raise ValueError("IDENTA_SMTP_FROM: obrigatório quando IDENTA_SMTP_HOST está definido")
         return self
+
+    @property
+    def previous_keys(self) -> list[str]:
+        return [key.strip() for key in self.encryption_old_keys.split(",") if key.strip()]
+
+    def key_ring(self) -> KeyRing | None:
+        return KeyRing(self.encryption_key, self.previous_keys) if self.encryption_enabled else None
 
     @property
     def smtp_configured(self) -> bool:

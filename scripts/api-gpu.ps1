@@ -44,6 +44,8 @@ try {
     & $Python -m identa.cli download-models
     & $Python -m alembic upgrade head
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & $Python -m identa.cli reencrypt --if-needed
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & $Python -m uvicorn identa.main:create_app --factory --host 127.0.0.1 --port $Port --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log
 }
 finally {

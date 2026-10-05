@@ -2,9 +2,10 @@ from datetime import date, datetime
 from enum import StrEnum
 
 from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from identa.db.base import Base, utc_now
+from identa.security.fields import EncryptedJSON, EncryptedText, blind_index
 
 
 class DocumentType(StrEnum):
@@ -92,7 +93,8 @@ class Person(Base):
     __tablename__ = "people"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    cpf: Mapped[str | None] = mapped_column(String(11), unique=True)
+    cpf: Mapped[str | None] = mapped_column(EncryptedText)
+    cpf_index: Mapped[str | None] = mapped_column(String(64), unique=True)
     full_name: Mapped[str | None] = mapped_column(String(200), index=True)
     birth_date: Mapped[date | None] = mapped_column(Date)
     mother_name: Mapped[str | None] = mapped_column(String(200))
@@ -102,6 +104,11 @@ class Person(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     documents: Mapped[list["Document"]] = relationship(back_populates="person", cascade="all, delete-orphan")
+
+    @validates("cpf")
+    def index_cpf(self, _key: str, value: str | None) -> str | None:
+        self.cpf_index = blind_index(value)
+        return value
 
 
 class Document(Base):
@@ -119,26 +126,32 @@ class Document(Base):
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
     full_name: Mapped[str | None] = mapped_column(String(200))
-    cpf: Mapped[str | None] = mapped_column(String(11), index=True)
+    cpf: Mapped[str | None] = mapped_column(EncryptedText)
+    cpf_index: Mapped[str | None] = mapped_column(String(64), index=True)
     birth_date: Mapped[date | None] = mapped_column(Date)
     mother_name: Mapped[str | None] = mapped_column(String(200))
     father_name: Mapped[str | None] = mapped_column(String(200))
     birthplace: Mapped[str | None] = mapped_column(String(120))
-    rg_number: Mapped[str | None] = mapped_column(String(32))
+    rg_number: Mapped[str | None] = mapped_column(EncryptedText)
     issuing_authority: Mapped[str | None] = mapped_column(String(32))
     issue_date: Mapped[date | None] = mapped_column(Date)
-    cnh_register: Mapped[str | None] = mapped_column(String(16))
+    cnh_register: Mapped[str | None] = mapped_column(EncryptedText)
     cnh_category: Mapped[str | None] = mapped_column(String(8))
     valid_until: Mapped[date | None] = mapped_column(Date)
     first_license_date: Mapped[date | None] = mapped_column(Date)
-    mrz_raw: Mapped[str | None] = mapped_column(Text)
+    mrz_raw: Mapped[str | None] = mapped_column(EncryptedText)
 
     field_confidence: Mapped[dict] = mapped_column(JSON, default=dict)
-    extra_fields: Mapped[dict] = mapped_column(JSON, default=dict)
-    raw_text: Mapped[str | None] = mapped_column(Text)
+    extra_fields: Mapped[dict] = mapped_column(EncryptedJSON, default=dict)
+    raw_text: Mapped[str | None] = mapped_column(EncryptedText)
 
     person: Mapped[Person | None] = relationship(back_populates="documents")
     images: Mapped[list["DocumentImage"]] = relationship(back_populates="document", cascade="all, delete-orphan")
+
+    @validates("cpf")
+    def index_cpf(self, _key: str, value: str | None) -> str | None:
+        self.cpf_index = blind_index(value)
+        return value
 
 
 class DocumentImage(Base):

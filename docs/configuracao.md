@@ -18,7 +18,8 @@ A coluna **Em execução** marca o que o administrador pode mudar em *Configura�
 | --- | --- | --- | --- | --- |
 | `IDENTA_SECRET_KEY` | — | sim | não | Assina os cookies de sessão e cifra o segredo do 2FA no banco. Mínimo de 32 caracteres. Trocar invalida sessões e 2FA ativos. |
 | `IDENTA_ENCRYPTION_ENABLED` | `true` | não | não | Criptografa imagens com AES-256-GCM. Desligado, grava sem criptografia; arquivos antigos criptografados continuam legíveis se a chave estiver definida. |
-| `IDENTA_ENCRYPTION_KEY` | — | com criptografia | não | Chave de 32 bytes em base64 (`python -m identa.cli generate-key`). Sem ela as imagens não podem ser lidas. |
+| `IDENTA_ENCRYPTION_KEY` | — | com criptografia | não | Chave de 32 bytes em base64 (`python -m identa.cli generate-key`). Cifra as imagens e os campos CPF, RG, CNH, MRZ, texto do OCR e dados extraídos. Sem ela nada disso pode ser lido. |
+| `IDENTA_ENCRYPTION_OLD_KEYS` | vazio | não | não | Chaves anteriores, separadas por vírgula. Servem só para ler dados e arquivos ainda não recifrados. Ver *Rotação de chave* em [seguranca.md](seguranca.md). |
 | `IDENTA_DATABASE_URL` | `sqlite:///./data/identa.db` | não | não | `sqlite:///caminho.db` ou `postgresql://usuario:senha@host:5432/banco`. No Compose é montada a partir de `POSTGRES_*`. |
 | `IDENTA_STORAGE_DIR` | `./storage` | não | não | Pasta das imagens. No Compose, volume `storage` em `/data/storage`. |
 | `IDENTA_PUBLIC_URL` | vazio | não | não | Base dos links enviados por e-mail. Vazio usa o endereço da requisição. |

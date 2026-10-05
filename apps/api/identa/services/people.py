@@ -8,6 +8,7 @@ from identa.db.base import utc_now
 from identa.db.models import Document, DocumentStatus, Person
 from identa.parsers.base import strip_accents
 from identa.parsers.registry import get_parser
+from identa.security.fields import blind_index
 from identa.services.audit import record
 from identa.services.documents import document_values
 from identa.validators.cpf import is_valid_cpf, only_digits
@@ -70,7 +71,7 @@ def update_person(session: Session, person: Person, values: dict[str, str | None
         if digits and not is_valid_cpf(digits):
             raise PersonUpdateError("CPF inválido: o dígito verificador não confere.")
         if digits and digits != person.cpf:
-            owner = session.scalar(select(Person).where(Person.cpf == digits, Person.id != person.id))
+            owner = session.scalar(select(Person).where(Person.cpf_index == blind_index(digits), Person.id != person.id))
             if owner is not None:
                 raise PersonUpdateError("Este CPF já pertence a outra pessoa do cadastro.")
         if digits != person.cpf:

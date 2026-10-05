@@ -63,6 +63,25 @@ def run_ocr_status() -> None:
             print(f"{label}: {status[key]}")
 
 
+def run_reencrypt(arguments: argparse.Namespace) -> None:
+    from identa.db.session import build_engine, build_session_factory
+    from identa.security.fields import configure_fields
+    from identa.security.rotation import pending, reencrypt
+    from identa.storage.file_store import FileStore
+
+    settings = get_settings()
+    ring = settings.key_ring()
+    configure_fields(ring, settings.secret_key)
+    factory = build_session_factory(build_engine(settings.database_url))
+    if arguments.if_needed:
+        with factory() as session:
+            if not pending(session, ring):
+                print("Dados já cifrados com a chave atual.")
+                return
+    report = reencrypt(factory, FileStore(settings.storage_dir, ring), ring)
+    print(f"Pessoas: {report.people}. Documentos: {report.documents}. Arquivos regravados: {report.files}.")
+
+
 def run_check_config() -> None:
     settings = get_settings()
     database = "SQLite" if settings.is_sqlite else "PostgreSQL"
@@ -110,6 +129,8 @@ def main() -> None:
     transfer_parser = commands.add_parser("sqlite-to-postgres", help="Copia todos os dados de um SQLite para um PostgreSQL vazio")
     transfer_parser.add_argument("--source", required=True, help="sqlite:///caminho/identa.db")
     transfer_parser.add_argument("--target", required=True, help="postgresql://usuario:senha@host:5432/banco")
+    reencrypt_parser = commands.add_parser("reencrypt", help="Cifra de novo dados e imagens com a chave atual")
+    reencrypt_parser.add_argument("--if-needed", action="store_true", help="Só roda se houver dado em claro ou com chave antiga")
     arguments = parser.parse_args()
     if arguments.command == "generate-key":
         print(generate_key())
@@ -123,6 +144,8 @@ def main() -> None:
         run_check_config()
     elif arguments.command == "export-openapi":
         run_export_openapi(arguments)
+    elif arguments.command == "reencrypt":
+        run_reencrypt(arguments)
     elif arguments.command == "sqlite-to-postgres":
         run_sqlite_to_postgres(arguments)
 

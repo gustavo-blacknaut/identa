@@ -1,6 +1,6 @@
 import pytest
 
-from identa.security.crypto import DecryptionError, EncryptionKeyError, FileCipher, decode_key, generate_key
+from identa.security.crypto import DecryptionError, EncryptionKeyError, KeyRing, decode_key, generate_key
 from identa.storage.file_store import FileStore
 
 CONTENT = b"\x89PNG fake image bytes" * 100
@@ -8,7 +8,7 @@ CONTENT = b"\x89PNG fake image bytes" * 100
 
 @pytest.fixture
 def store(tmp_path):
-    return FileStore(tmp_path, FileCipher(generate_key()))
+    return FileStore(tmp_path, KeyRing(generate_key()))
 
 
 def test_round_trip_preserves_original_bytes(store):
@@ -26,9 +26,9 @@ def test_file_on_disk_is_not_plaintext(store, tmp_path):
 
 
 def test_wrong_key_fails(tmp_path):
-    stored = FileStore(tmp_path, FileCipher(generate_key())).save("originals", CONTENT)
+    stored = FileStore(tmp_path, KeyRing(generate_key())).save("originals", CONTENT)
     with pytest.raises(DecryptionError):
-        FileStore(tmp_path, FileCipher(generate_key())).load(stored.relative_path)
+        FileStore(tmp_path, KeyRing(generate_key())).load(stored.relative_path)
 
 
 def test_tampered_file_fails(store, tmp_path):

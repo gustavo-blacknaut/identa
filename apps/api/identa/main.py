@@ -13,7 +13,7 @@ from identa.config import Settings, get_settings
 from identa.db.session import build_engine, build_session_factory
 from identa.mail.sender import Mailer
 from identa.ocr.factory import get_ocr_engine
-from identa.security.crypto import FileCipher
+from identa.security.fields import configure_fields
 from identa.services.audit import current_ip
 from identa.services.retention import start_retention_worker
 from identa.services.settings import load_runtime
@@ -50,11 +50,12 @@ def warm_up_ocr(application: FastAPI) -> None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging()
-    cipher = FileCipher(settings.encryption_key) if settings.encryption_enabled else None
+    ring = settings.key_ring()
+    configure_fields(ring, settings.secret_key)
     application = FastAPI(title="Identa", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     application.state.settings = settings
     application.state.session_factory = build_session_factory(build_engine(settings.database_url))
-    application.state.store = FileStore(settings.storage_dir, cipher)
+    application.state.store = FileStore(settings.storage_dir, ring)
     application.state.login_throttle = LoginThrottle(max_attempts=IP_ATTEMPTS)
     application.state.mailer = Mailer(settings)
     application.include_router(setup_router)

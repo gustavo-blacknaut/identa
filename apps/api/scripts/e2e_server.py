@@ -15,7 +15,8 @@ from identa.db.models import Document
 from identa.db.session import build_engine, build_session_factory
 from identa.main import create_app
 from identa.ocr.factory import get_ocr_engine
-from identa.security.crypto import FileCipher, generate_key
+from identa.security.crypto import generate_key
+from identa.security.fields import configure_fields
 from identa.services.scan_links import create_link
 from identa.services.settings import load_runtime
 from identa.storage.file_store import FileStore
@@ -39,7 +40,8 @@ def prepare(directory: Path, accounts: list[dict]) -> dict:
     config.attributes["database_url"] = settings.database_url
     command.upgrade(config, "head")
     factory = build_session_factory(build_engine(settings.database_url))
-    store = FileStore(settings.storage_dir, FileCipher(settings.encryption_key))
+    store = FileStore(settings.storage_dir, settings.key_ring())
+    configure_fields(settings.key_ring(), settings.secret_key)
     with factory() as session:
         runtime = load_runtime(session, settings)
         for account in accounts:
