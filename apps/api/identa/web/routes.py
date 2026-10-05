@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -52,7 +52,6 @@ from identa.web.schemas import (
     PersonOut,
     PersonUpdateIn,
     PublicLinkOut,
-    ReprocessIn,
     ReviewIn,
     RolePermissionsIn,
     ScanLinkCreated,
@@ -94,7 +93,9 @@ FORMAT_LABELS = {"jpeg": "JPEG", "png": "PNG", "webp": "WebP", "heic": "HEIC"}
 
 
 def image_policy(request: Request, runtime: RuntimeSettings) -> ImagePolicy:
-    return ImagePolicy(runtime.image_quality, runtime.compress_originals, request.app.state.settings.original_max_side)
+    return ImagePolicy(
+        runtime.image_quality, runtime.compress_originals, request.app.state.settings.original_max_side, runtime.ocr_passes
+    )
 
 
 def load_document(session: Session, document_id: int) -> Document:
@@ -156,20 +157,14 @@ async def upload_document(
     store: StoreDep,
     engine: EngineDep,
     runtime: RuntimeDep,
-    doc_type: Annotated[str, Form()] = "",
     front: Annotated[UploadFile | None, File()] = None,
     back: Annotated[UploadFile | None, File()] = None,
 ) -> DocumentDetail:
     sides = await read_sides(runtime, front, back)
     try:
-        requested_type = doc_type or None
-        if requested_type:
-            get_parser(requested_type)
         document = await run_in_threadpool(
-            process_document, session, store, engine, requested_type, sides, user.id, image_policy(request, runtime)
+            process_document, session, store, engine, None, sides, user.id, image_policy(request, runtime)
         )
-    except KeyError as error:
-        raise HTTPException(400, str(error)) from error
     except InvalidImageError as error:
         raise HTTPException(400, str(error)) from error
     except Exception as error:
@@ -191,7 +186,6 @@ def save_document(document_id: int, payload: ReviewIn, user: Reviewer, session: 
 async def reprocess(
     request: Request,
     document_id: int,
-    payload: ReprocessIn,
     user: Reviewer,
     session: SessionDep,
     store: StoreDep,
@@ -199,16 +193,8 @@ async def reprocess(
     runtime: RuntimeDep,
 ) -> DocumentDetail:
     document = load_document(session, document_id)
-    if payload.doc_type:
-        try:
-            get_parser(payload.doc_type)
-        except KeyError as error:
-            raise HTTPException(400, str(error)) from error
     try:
-        await run_in_threadpool(
-            reprocess_document, session, store, engine, document, user.id, payload.doc_type or None,
-            image_policy(request, runtime),
-        )
+        await run_in_threadpool(reprocess_document, session, store, engine, document, user.id, image_policy(request, runtime))
     except Exception as error:
         logger.exception("Falha ao reprocessar documento %s", document_id)
         session.rollback()

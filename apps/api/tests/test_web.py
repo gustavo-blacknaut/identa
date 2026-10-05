@@ -3,11 +3,10 @@ from tests.conftest import login
 from tests.synthetic import encode_jpeg, photograph, render_rg_back
 
 
-def upload_rg(client, doc_type=None):
+def upload_rg(client):
     image = encode_jpeg(photograph(render_rg_back()))
     return client.post(
         "/api/documents",
-        data={"doc_type": doc_type} if doc_type else {},
         files={"front": ("frente.jpg", image, "image/jpeg"), "back": ("verso.jpg", image, "image/jpeg")},
     )
 
@@ -89,25 +88,31 @@ def test_rejects_invalid_image(client):
 
 def test_upload_without_images_is_rejected(client):
     login(client)
-    response = client.post("/api/documents", data={"doc_type": "rg"})
+    response = client.post("/api/documents", data={"front": ""})
     assert response.status_code == 400
     assert "pelo menos uma foto" in response.json()["detail"]
 
 
-def test_reprocess_reruns_ocr_and_can_force_type(client):
+def test_reprocess_reruns_ocr_and_detects_type(client):
     login(client)
     detail = upload_rg(client).json()
     client.put(f"/api/documents/{detail['id']}", json={"values": {"full_name": "NOME CORRIGIDO"}})
 
-    reprocessed = client.post(f"/api/documents/{detail['id']}/reprocess", json={}).json()
+    reprocessed = client.post(f"/api/documents/{detail['id']}/reprocess").json()
     assert reprocessed["status"] == "pending_review"
+    assert reprocessed["doc_type"] == "rg"
+    assert reprocessed["type_detected"] is True
     assert field_values(reprocessed)["full_name"] == "MARIANA OLIVEIRA DOS SANTOS"
     assert len(reprocessed["pages"]) == 2
 
-    forced = client.post(f"/api/documents/{detail['id']}/reprocess", json={"doc_type": "cpf"}).json()
-    assert forced["doc_type"] == "cpf"
-    assert forced["type_detected"] is False
-    assert client.post(f"/api/documents/{detail['id']}/reprocess", json={"doc_type": "xyz"}).status_code == 400
+
+def test_document_type_cannot_be_forced(client):
+    login(client)
+    image = encode_jpeg(photograph(render_rg_back()))
+    detail = client.post(
+        "/api/documents", data={"doc_type": "cpf"}, files={"back": ("verso.jpg", image, "image/jpeg")}
+    ).json()
+    assert detail["doc_type"] == "rg"
 
 
 def test_overview_lists_new_documents(client):

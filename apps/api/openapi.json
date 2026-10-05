@@ -1429,16 +1429,6 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReprocessIn"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2655,11 +2645,6 @@
       },
       "Body_upload_document_api_documents_post": {
         "properties": {
-          "doc_type": {
-            "type": "string",
-            "title": "Doc Type",
-            "default": ""
-          },
           "front": {
             "anyOf": [
               {
@@ -3877,23 +3862,6 @@
           "recovery_codes"
         ],
         "title": "RecoveryCodesOut"
-      },
-      "ReprocessIn": {
-        "properties": {
-          "doc_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Doc Type"
-          }
-        },
-        "type": "object",
-        "title": "ReprocessIn"
       },
       "ResetIn": {
         "properties": {

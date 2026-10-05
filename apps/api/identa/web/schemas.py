@@ -64,10 +64,6 @@ class ReviewIn(BaseModel):
     values: dict[str, str]
 
 
-class ReprocessIn(BaseModel):
-    doc_type: str | None = None
-
-
 class StatsOut(BaseModel):
     documents: int
     pending: int
