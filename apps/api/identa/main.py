@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from identa import __version__
+from identa.auth.passwords import configure_hashing
 from identa.auth.routes import PUBLIC_API_PATHS, setup_router, users_router
 from identa.auth.routes import router as auth_router
 from identa.auth.throttle import LoginThrottle
@@ -61,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     configure_logging()
     ring = settings.key_ring()
     configure_fields(ring, settings.secret_key)
+    configure_hashing(settings.argon2_time_cost, settings.argon2_memory_kib, settings.argon2_parallelism)
     application = FastAPI(title="Identa", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     application.state.settings = settings
     application.state.session_factory = build_session_factory(build_engine(settings.database_url))

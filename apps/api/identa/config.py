@@ -63,6 +63,9 @@ class Settings(OcrSettings):
     retention_interval_hours: int = Field(24, ge=1)
 
     password_min_length: int = Field(10, ge=8, le=128)
+    argon2_time_cost: int = Field(3, ge=2, le=20)
+    argon2_memory_kib: int = Field(65536, ge=19456, le=1048576)
+    argon2_parallelism: int = Field(4, ge=1, le=16)
     password_require_mixed: bool = True
     login_max_attempts: int = Field(5, ge=1, le=100)
     login_lock_minutes: int = Field(15, ge=1)

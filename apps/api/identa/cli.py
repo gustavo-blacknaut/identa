@@ -21,11 +21,12 @@ def read_password(arguments: argparse.Namespace) -> str:
 
 def run_create_user(arguments: argparse.Namespace) -> None:
     from identa.auth.accounts import create_user
-    from identa.auth.passwords import WeakPasswordError
+    from identa.auth.passwords import WeakPasswordError, configure_hashing
     from identa.db.session import build_engine, build_session_factory
     from identa.services.settings import load_runtime
 
     settings = get_settings()
+    configure_hashing(settings.argon2_time_cost, settings.argon2_memory_kib, settings.argon2_parallelism)
     password = read_password(arguments)
     factory = build_session_factory(build_engine(settings.database_url))
     with factory() as session:

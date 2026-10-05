@@ -1,7 +1,16 @@
 import pytest
+from sqlalchemy import select
 
-from identa.auth.passwords import WeakPasswordError, check_password_policy, hash_password, verify_password
+from identa.auth.passwords import (
+    WeakPasswordError,
+    check_password_policy,
+    configure_hashing,
+    hash_password,
+    needs_rehash,
+    verify_password,
+)
 from identa.auth.throttle import LoginThrottle
+from identa.db.models import User
 from tests.conftest import EMAIL, PASSWORD, add_user, login
 
 
@@ -160,3 +169,20 @@ def test_token_guessing_is_throttled(client, method, path, payload):
     statuses = {attempt(index).status_code for index in range(20)}
     assert 429 not in statuses
     assert attempt(20).status_code == 429
+
+
+def test_login_upgrades_hashes_made_with_old_parameters(client):
+    configure_hashing(2, 19456, 1)
+    old_hash = hash_password(PASSWORD)
+    configure_hashing(3, 65536, 4)
+    assert "m=19456,t=2,p=1" in old_hash
+    assert needs_rehash(old_hash)
+    with client.app.state.session_factory() as session:
+        user = session.scalar(select(User).where(User.email == EMAIL))
+        user.password_hash = old_hash
+        session.commit()
+    login(client)
+    with client.app.state.session_factory() as session:
+        upgraded = session.scalar(select(User).where(User.email == EMAIL)).password_hash
+    assert "m=65536,t=3,p=4" in upgraded
+    assert verify_password(upgraded, PASSWORD)

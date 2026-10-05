@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from identa.auth import totp
 from identa.auth.one_time import consume, find_active, issue_token, revoke_pending
-from identa.auth.passwords import check_password_policy, hash_password, verify_password
+from identa.auth.passwords import check_password_policy, hash_password, needs_rehash, verify_password
 from identa.auth.tokens import as_aware, revoke_all
 from identa.db.base import utc_now
 from identa.db.models import TokenPurpose, User, UserRole, UserToken
@@ -102,6 +102,8 @@ def authenticate(session: Session, email: str, password: str, runtime: RuntimeSe
         return LoginOutcome(None, "disabled", account_id=user.id)
     user.failed_logins = 0
     user.locked_until = None
+    if needs_rehash(user.password_hash):
+        user.password_hash = hash_password(password)
     return LoginOutcome(user, "ok")
 
 
