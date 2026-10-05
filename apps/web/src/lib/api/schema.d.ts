@@ -976,6 +976,8 @@ export interface components {
             image_count: number;
             /** Person Id */
             person_id: number | null;
+            /** Masked */
+            masked: boolean;
         };
         /** DocumentSummary */
         DocumentSummary: {
@@ -1252,6 +1254,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Masked */
+            masked: boolean;
             /** Mother Name */
             mother_name: string | null;
             /** Father Name */
@@ -2535,7 +2539,9 @@ export interface operations {
     };
     show_document_api_documents__document_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -2566,7 +2572,9 @@ export interface operations {
     };
     save_document_api_documents__document_id__put: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -2630,7 +2638,9 @@ export interface operations {
     };
     reprocess_api_documents__document_id__reprocess_post: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -2761,7 +2771,9 @@ export interface operations {
     };
     show_person_api_people__person_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 person_id: number;
@@ -2792,7 +2804,9 @@ export interface operations {
     };
     edit_person_api_people__person_id__put: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 person_id: number;
@@ -2888,7 +2902,9 @@ export interface operations {
     };
     verify_api_people__person_id__verify_post: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 person_id: number;

@@ -9,6 +9,7 @@ from identa.db.models import Document, DocumentStatus, Person
 from identa.parsers.base import strip_accents
 from identa.parsers.registry import get_parser
 from identa.security.fields import blind_index
+from identa.security.masking import is_sensitive
 from identa.services.audit import record
 from identa.services.documents import document_values
 from identa.validators.cpf import is_valid_cpf, only_digits
@@ -37,6 +38,7 @@ class OtherDataItem:
     value: str
     doc_type: str
     document_id: int
+    sensitive: bool = False
 
 
 @dataclass(frozen=True)
@@ -151,5 +153,6 @@ def other_data(person: Person) -> list[OtherDataItem]:
             if not value or key in seen:
                 continue
             seen.add(key)
-            items.append(OtherDataItem(definition.label, value, document.doc_type, document.id))
+            sensitive = is_sensitive(definition.name, definition.kind)
+            items.append(OtherDataItem(definition.label, value, document.doc_type, document.id, sensitive))
     return items

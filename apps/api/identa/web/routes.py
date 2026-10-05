@@ -10,11 +10,12 @@ from sqlalchemy.orm import Session
 
 from identa.auth.accounts import has_users
 from identa.auth.permissions import Permission, assignable_permissions
-from identa.db.models import Document, DocumentImage, DocumentStatus, ImageSide, Person, ScanLink
+from identa.db.models import Document, DocumentImage, DocumentStatus, ImageSide, Person, ScanLink, User
 from identa.imaging.preprocess import InvalidImageError, detect_format
 from identa.ocr.base import OcrEngine
 from identa.ocr.status import describe_engine
 from identa.parsers.registry import available_parsers, get_parser
+from identa.security.masking import is_masked
 from identa.services.audit import record
 from identa.services.documents import (
     ImagePolicy,
@@ -126,8 +127,27 @@ async def read_sides(runtime: RuntimeSettings, front: UploadFile | None, back: U
     return sides
 
 
-def detail(document: Document) -> DocumentDetail:
-    return document_detail(document, get_parser(document.doc_type))
+RevealDep = Annotated[bool, Query(alias="reveal")]
+
+
+def detail(document: Document, reveal: bool = False) -> DocumentDetail:
+    return document_detail(document, get_parser(document.doc_type), reveal)
+
+
+def allow_reveal(
+    session: Session, user: User, runtime: RuntimeSettings, wanted: bool, entity: str, entity_id: int
+) -> bool:
+    if not wanted:
+        return False
+    if Permission.DATA_REVEAL not in runtime.permissions_of(user.role):
+        raise HTTPException(403, "Você não tem permissão para ver os dados completos.")
+    record(session, user.id, "reveal", entity, entity_id)
+    session.commit()
+    return True
+
+
+def unmasked(values: dict[str, str | None]) -> dict[str, str | None]:
+    return {name: value for name, value in values.items() if not is_masked(value)}
 
 
 @router.get("/document-types")
@@ -174,12 +194,14 @@ async def upload_document(
 
 
 @router.put("/documents/{document_id}")
-def save_document(document_id: int, payload: ReviewIn, user: Reviewer, session: SessionDep) -> DocumentDetail:
+def save_document(
+    document_id: int, payload: ReviewIn, user: Reviewer, session: SessionDep, runtime: RuntimeDep, reveal: RevealDep = False
+) -> DocumentDetail:
     document = load_document(session, document_id)
     allowed = get_parser(document.doc_type).field_names
-    values = {name: value for name, value in payload.values.items() if name in allowed}
+    values = {name: value for name, value in unmasked(payload.values).items() if name in allowed}
     review_document(session, document, values, user.id)
-    return detail(document)
+    return detail(document, allow_reveal(session, user, runtime, reveal, "document", document.id))
 
 
 @router.post("/documents/{document_id}/reprocess")
@@ -191,6 +213,7 @@ async def reprocess(
     store: StoreDep,
     engine: EngineDep,
     runtime: RuntimeDep,
+    reveal: RevealDep = False,
 ) -> DocumentDetail:
     document = load_document(session, document_id)
     try:
@@ -199,7 +222,7 @@ async def reprocess(
         logger.exception("Falha ao reprocessar documento %s", document_id)
         session.rollback()
         raise HTTPException(500, PROCESSING_FAILED_MESSAGE) from error
-    return detail(document)
+    return detail(document, allow_reveal(session, user, runtime, reveal, "document", document.id))
 
 
 @router.delete("/documents/{document_id}", status_code=204)
@@ -297,11 +320,13 @@ def image(image_id: int, variant: str, user: Viewer, session: SessionDep, store:
 
 
 @router.get("/documents/{document_id}")
-def show_document(document_id: int, user: Viewer, session: SessionDep) -> DocumentDetail:
+def show_document(
+    document_id: int, user: Viewer, session: SessionDep, runtime: RuntimeDep, reveal: RevealDep = False
+) -> DocumentDetail:
     document = load_document(session, document_id)
     record(session, user.id, "view", "document", document.id)
     session.commit()
-    return detail(document)
+    return detail(document, allow_reveal(session, user, runtime, reveal, "document", document.id))
 
 
 def load_person(session: Session, person_id: int) -> Person:
@@ -312,29 +337,41 @@ def load_person(session: Session, person_id: int) -> Person:
 
 
 @router.get("/people/{person_id}")
-def show_person(person_id: int, user: Viewer, session: SessionDep) -> PersonDetail:
+def show_person(
+    person_id: int, user: Viewer, session: SessionDep, runtime: RuntimeDep, reveal: RevealDep = False
+) -> PersonDetail:
     person = load_person(session, person_id)
     record(session, user.id, "view", "person", person.id)
     session.commit()
-    return person_detail(person)
+    return person_detail(person, allow_reveal(session, user, runtime, reveal, "person", person.id))
 
 
 @router.put("/people/{person_id}")
-def edit_person(person_id: int, payload: PersonUpdateIn, user: PersonEditor, session: SessionDep) -> PersonDetail:
+def edit_person(
+    person_id: int,
+    payload: PersonUpdateIn,
+    user: PersonEditor,
+    session: SessionDep,
+    runtime: RuntimeDep,
+    reveal: RevealDep = False,
+) -> PersonDetail:
     person = load_person(session, person_id)
     try:
-        update_person(session, person, payload.values, user.id)
+        update_person(session, person, unmasked(payload.values), user.id)
     except PersonUpdateError as error:
         session.rollback()
         raise HTTPException(400, str(error)) from error
-    return person_detail(person)
+    return person_detail(person, allow_reveal(session, user, runtime, reveal, "person", person.id))
 
 
 @router.post("/people/{person_id}/verify")
-def verify(person_id: int, user: PersonEditor, session: SessionDep) -> VerificationOut:
+def verify(
+    person_id: int, user: PersonEditor, session: SessionDep, runtime: RuntimeDep, reveal: RevealDep = False
+) -> VerificationOut:
     person = load_person(session, person_id)
     result = verify_person(session, person, user.id)
-    return VerificationOut(changes=result.changes, problems=result.problems, person=person_detail(person))
+    revealed = allow_reveal(session, user, runtime, reveal, "person", person.id)
+    return VerificationOut(changes=result.changes, problems=result.problems, person=person_detail(person, revealed))
 
 
 def settings_out(request: Request, runtime: RuntimeSettings) -> SettingsOut:

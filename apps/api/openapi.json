@@ -1302,6 +1302,16 @@
               "type": "integer",
               "title": "Document Id"
             }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
+            }
           }
         ],
         "requestBody": {
@@ -1385,6 +1395,16 @@
               "type": "integer",
               "title": "Document Id"
             }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
+            }
           }
         ],
         "responses": {
@@ -1426,6 +1446,16 @@
             "schema": {
               "type": "integer",
               "title": "Document Id"
+            }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
             }
           }
         ],
@@ -1823,6 +1853,16 @@
               "type": "integer",
               "title": "Person Id"
             }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
+            }
           }
         ],
         "responses": {
@@ -1862,6 +1902,16 @@
             "schema": {
               "type": "integer",
               "title": "Person Id"
+            }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
             }
           }
         ],
@@ -1963,6 +2013,16 @@
             "schema": {
               "type": "integer",
               "title": "Person Id"
+            }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
             }
           }
         ],
@@ -2837,6 +2897,10 @@
               }
             ],
             "title": "Person Id"
+          },
+          "masked": {
+            "type": "boolean",
+            "title": "Masked"
           }
         },
         "type": "object",
@@ -2858,7 +2922,8 @@
           "crops",
           "raw_text",
           "image_count",
-          "person_id"
+          "person_id",
+          "masked"
         ],
         "title": "DocumentDetail"
       },
@@ -3619,6 +3684,10 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "masked": {
+            "type": "boolean",
+            "title": "Masked"
+          },
           "mother_name": {
             "anyOf": [
               {
@@ -3679,6 +3748,7 @@
           "images",
           "created_at",
           "updated_at",
+          "masked",
           "mother_name",
           "father_name",
           "birthplace",

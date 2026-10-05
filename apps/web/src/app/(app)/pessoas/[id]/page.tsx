@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, CircleCheck, FilePlus2, Pencil, Save, ShieldCheck, Trash2, X } from "lucide-react";
+import { CircleAlert, CircleCheck, Eye, FilePlus2, Pencil, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -42,7 +42,12 @@ export default function PersonPage() {
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["person", personId], queryFn: () => api.person(personId), enabled: Number.isFinite(personId) });
+  const [reveal, setReveal] = useState(false);
+  const query = useQuery({
+    queryKey: ["person", personId, reveal],
+    queryFn: () => api.person(personId, reveal),
+    enabled: Number.isFinite(personId),
+  });
   const [deleting, setDeleting] = useState(false);
   const [editing, setEditing] = useState(false);
   const [values, setValues] = useState<Record<EditableName, string>>(formValues({} as PersonDetail));
@@ -80,7 +85,7 @@ export default function PersonPage() {
   });
 
   const update = (next: PersonDetail) => {
-    queryClient.setQueryData(["person", personId], next);
+    queryClient.setQueryData(["person", personId, reveal], next);
     void queryClient.invalidateQueries({ queryKey: ["people"] });
   };
 
@@ -102,7 +107,7 @@ export default function PersonPage() {
     setBusy(true);
     setFormError(null);
     try {
-      update(await api.updatePerson(person.id, result.data));
+      update(await api.updatePerson(person.id, result.data, reveal));
       setEditing(false);
       toast(t.person.updated);
     } catch (caught) {
@@ -115,7 +120,7 @@ export default function PersonPage() {
   const verify = async () => {
     setBusy(true);
     try {
-      const result = await api.verifyPerson(person.id);
+      const result = await api.verifyPerson(person.id, reveal);
       update(result.person);
       setVerification(result);
     } catch (caught) {
@@ -204,6 +209,12 @@ export default function PersonPage() {
           <section className="panel">
             <div className="panel-head">
               <h2>{t.person.consolidated}</h2>
+              {person.masked && can("data.reveal") && (
+                <button className="button button-ghost" type="button" onClick={() => setReveal(true)}>
+                  <Eye size={14} strokeWidth={1.75} />
+                  {t.review.reveal}
+                </button>
+              )}
               {editor && !editing && (
                 <button className="button button-ghost" type="button" onClick={startEditing}>
                   <Pencil size={14} strokeWidth={1.75} />
@@ -224,6 +235,7 @@ export default function PersonPage() {
                         value={values[name]}
                         placeholder={name === "cpf" ? "000.000.000-00" : name === "birth_date" ? "dd/mm/aaaa" : undefined}
                         inputMode={name === "cpf" || name === "birth_date" ? "numeric" : undefined}
+                        readOnly={name === "cpf" && person.masked}
                         className={name === "cpf" ? "mono" : undefined}
                         aria-invalid={Boolean(errors[name]) || undefined}
                         onChange={(event) => setValues((current) => ({ ...current, [name]: event.target.value }))}

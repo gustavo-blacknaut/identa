@@ -38,7 +38,8 @@ def test_full_flow_upload_review_and_delete(client):
     detail = upload_rg(client).json()
     document_id = detail["id"]
     values = field_values(detail)
-    assert values["cpf"] == "529.982.247-25"
+    assert values["cpf"] == "529.***.***-25"
+    assert detail["raw_text"] == ""
 
     page = detail["pages"][0]
     assert client.get(page["thumbnail_url"]).headers["content-type"] == "image/webp"

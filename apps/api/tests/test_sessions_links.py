@@ -116,8 +116,10 @@ def test_person_detail_lists_other_data(client):
     person_id = upload(client)["person_id"]
     detail = client.get(f"/api/people/{person_id}").json()
     labels = {item["label"]: item["value"] for item in detail["other_data"]}
-    assert labels["Número do RG"] == "48.217.395-6"
+    assert labels["Número do RG"] == "48.2**.**5-6"
     assert labels["Órgão expedidor"] == "SSP/SP"
+    revealed = client.get(f"/api/people/{person_id}", params={"reveal": "true"}).json()
+    assert {item["label"]: item["value"] for item in revealed["other_data"]}["Número do RG"] == "48.217.395-6"
 
 
 def test_timezone_setting(client):
