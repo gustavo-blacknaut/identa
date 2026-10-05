@@ -64,6 +64,13 @@ def test_wrong_password_is_rejected(client):
     assert "inválidos" in response.json()["detail"]
 
 
+def test_login_does_not_reveal_whether_the_account_exists(client):
+    known = client.post("/api/auth/login", json={"email": EMAIL, "password": "senha-errada"})
+    unknown = client.post("/api/auth/login", json={"email": "ninguem@exemplo.com", "password": "senha-errada"})
+    assert known.status_code == unknown.status_code == 401
+    assert known.json() == unknown.json()
+
+
 def test_email_is_case_insensitive(client):
     response = client.post("/api/auth/login", json={"email": EMAIL.upper(), "password": PASSWORD})
     assert response.json()["user"]["email"] == EMAIL
@@ -85,8 +92,10 @@ def test_account_is_locked_after_repeated_failures(client):
     for _ in range(4):
         assert client.post("/api/auth/login", json={"email": EMAIL, "password": "errada"}).status_code == 401
     locked = client.post("/api/auth/login", json={"email": EMAIL, "password": "errada"})
-    assert locked.status_code == 423
-    assert client.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD}).status_code == 423
+    assert locked.status_code == 401
+    blocked = client.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    assert blocked.status_code == 401
+    assert blocked.json() == locked.json()
     add_user(client.app, "auditora@exemplo.com.br")
     login(client, "auditora@exemplo.com.br")
     actions = {item["action"] for item in client.get("/api/audit").json()["items"]}
@@ -126,4 +135,4 @@ def test_disabled_account_cannot_log_in(client):
     assert client.patch(f"/api/users/{user_id}", json={"is_active": False}).status_code == 200
     client.post("/api/auth/logout")
     response = client.post("/api/auth/login", json={"email": "leitora@exemplo.com.br", "password": PASSWORD})
-    assert response.status_code == 403
+    assert response.status_code == 401

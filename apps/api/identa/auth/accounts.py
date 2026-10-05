@@ -24,6 +24,7 @@ class LoginOutcome:
     user: User | None
     status: str
     locked_until: datetime | None = None
+    account_id: int | None = None
 
 
 def normalize_email(email: str) -> str:
@@ -87,7 +88,7 @@ def authenticate(session: Session, email: str, password: str, runtime: RuntimeSe
     user = session.scalar(select(User).where(User.email == normalize_email(email)))
     if user is not None and is_locked(user):
         verify_password(None, password)
-        return LoginOutcome(None, "locked", user.locked_until)
+        return LoginOutcome(None, "locked", user.locked_until, user.id)
     if not verify_password(user.password_hash if user else None, password):
         if user is not None:
             user.failed_logins = (user.failed_logins or 0) + 1
@@ -95,10 +96,10 @@ def authenticate(session: Session, email: str, password: str, runtime: RuntimeSe
                 user.failed_logins = 0
                 user.locked_until = utc_now() + timedelta(minutes=runtime.login_lock_minutes)
                 record(session, user.id, "lock", "user", user.id, f"bloqueado por {runtime.login_lock_minutes} min")
-                return LoginOutcome(None, "locked", user.locked_until)
-        return LoginOutcome(None, "invalid")
+                return LoginOutcome(None, "locked", user.locked_until, user.id)
+        return LoginOutcome(None, "invalid", account_id=user.id if user else None)
     if not user.is_active:
-        return LoginOutcome(None, "disabled")
+        return LoginOutcome(None, "disabled", account_id=user.id)
     user.failed_logins = 0
     user.locked_until = None
     return LoginOutcome(user, "ok")

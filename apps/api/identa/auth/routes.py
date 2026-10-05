@@ -72,6 +72,7 @@ PUBLIC_API_PATHS = (
     "/api/setup",
     "/health",
 )
+LOGIN_FAILED = "E-mail ou senha inválidos. Depois de várias tentativas seguidas a conta fica bloqueada por alguns minutos."
 REFRESH_COOKIE = "identa_refresh"
 REFRESH_PATH = "/"
 TWO_FACTOR_SECONDS = 300
@@ -172,17 +173,11 @@ def login(request: Request, response: Response, credentials: LoginIn, session: S
     throttle = request.app.state.login_throttle
     key = guard_ip(request, "login")
     outcome = accounts.authenticate(session, credentials.email, credentials.password, runtime)
-    if outcome.status == "locked":
-        session.commit()
-        until = format_moment(outcome.locked_until, runtime) if outcome.locked_until else ""
-        raise HTTPException(423, f"Conta bloqueada temporariamente por excesso de tentativas. Tente após {until}.")
     if outcome.user is None:
         throttle.record_failure(key)
-        record(session, None, "login_failed", "user", None, f"e-mail informado: {credentials.email[:80]}")
+        record(session, None, "login_failed", "user", outcome.account_id, outcome.status)
         session.commit()
-        if outcome.status == "disabled":
-            raise HTTPException(403, "Esta conta está desativada. Fale com um administrador.")
-        raise HTTPException(401, "E-mail ou senha inválidos.")
+        raise HTTPException(401, LOGIN_FAILED)
     user = outcome.user
     if user.two_factor_enabled:
         session.commit()
@@ -291,10 +286,12 @@ def reset_password(request: Request, payload: ResetIn, session: SessionDep, runt
 
 
 @router.get("/invitations/{token}")
-def preview_invitation(token: str, session: SessionDep) -> InvitationPreview:
+def preview_invitation(request: Request, token: str, session: SessionDep) -> InvitationPreview:
+    key = guard_ip(request, "invite")
     try:
         invitation = accounts.invitation(session, token)
     except InvalidTokenError as error:
+        request.app.state.login_throttle.record_failure(key)
         raise HTTPException(404, str(error)) from error
     return InvitationPreview(email=invitation.email, role=invitation.role or "reader", expires_at=invitation.expires_at)
 
@@ -314,11 +311,12 @@ def accept_invitation(
 
 @router.post("/email/verify")
 def verify_email(request: Request, payload: TokenIn, session: SessionDep, runtime: RuntimeDep) -> dict[str, str]:
-    guard_ip(request, "verify")
+    key = guard_ip(request, "verify")
     try:
         user = accounts.confirm_email(session, payload.token)
     except (InvalidTokenError, AccountError) as error:
         session.commit()
+        request.app.state.login_throttle.record_failure(key)
         raise HTTPException(400, str(error)) from error
     session.commit()
     return {"detail": f"E-mail {user.email} confirmado."}
