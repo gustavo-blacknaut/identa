@@ -32,4 +32,4 @@ Primeira versão.
 - Retenção com exclusão automática e compressão opcional dos originais.
 - Interface em Next.js, responsiva de 360 a 1920 px, em português e inglês, com tema claro e escuro.
 
-[0.1.0]: https://github.com/OWNER/identa/releases/tag/v0.1.0
+[0.1.0]: https://github.com/gustavo-blacknaut/identa/releases/tag/v0.1.0
