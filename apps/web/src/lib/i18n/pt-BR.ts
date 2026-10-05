@@ -358,6 +358,7 @@ export const ptBR = {
       permissions: "Permissões",
       session: "Sessões",
       scan_link: "Link de envio",
+      invitation: "Convite",
     } as Record<string, string>,
   },
   account: {

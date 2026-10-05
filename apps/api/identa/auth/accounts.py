@@ -130,7 +130,7 @@ def invite(
     token, raw = issue_token(
         session, TokenPurpose.INVITE, email, timedelta(hours=runtime.invite_hours), role=role, created_by=inviter.id
     )
-    record(session, inviter.id, "invite", "user", None, f"{email} como {role}")
+    record(session, inviter.id, "invite", "invitation", token.id, f"papel {role}")
     return token, raw
 
 
@@ -155,7 +155,7 @@ def accept_invite(session: Session, raw_token: str, name: str, password: str, ru
 
 def revoke_invite(session: Session, token: UserToken, admin: User) -> None:
     token.revoked_at = utc_now()
-    record(session, admin.id, "invite_revoke", "user", None, token.email)
+    record(session, admin.id, "invite_revoke", "invitation", token.id)
 
 
 def request_reset(session: Session, email: str, runtime: RuntimeSettings, minutes: int) -> tuple[User, str] | None:
@@ -200,7 +200,7 @@ def request_email_change(session: Session, user: User, email: str, password: str
     if find_by_email(session, email) is not None:
         raise AccountError("Já existe uma conta com este e-mail.")
     user.pending_email = email
-    record(session, user.id, "email_change_request", "user", user.id, email)
+    record(session, user.id, "email_change_request", "user", user.id)
     return issue_verification(session, user, email, hours)
 
 
@@ -214,13 +214,12 @@ def confirm_email(session: Session, raw_token: str) -> User:
         if user.pending_email != token.email or find_by_email(session, token.email) is not None:
             consume(token)
             raise AccountError("Este pedido de troca de e-mail não é mais válido.")
-        previous = user.email
         user.email = token.email
         user.pending_email = None
-        record(session, user.id, "email_change", "user", user.id, f"{previous} para {user.email}")
+        record(session, user.id, "email_change", "user", user.id)
     user.email_verified_at = utc_now()
     consume(token)
-    record(session, user.id, "email_verify", "user", user.id, user.email)
+    record(session, user.id, "email_verify", "user", user.id)
     return user
 
 
@@ -266,8 +265,7 @@ def disable_two_factor(session: Session, user: User, password: str, actor: User 
     user.totp_secret = None
     user.totp_enabled_at = None
     user.recovery_codes = []
-    details = None if actor is None else f"desativado por {actor.email}"
-    record(session, (actor or user).id, "2fa_disable", "user", user.id, details)
+    record(session, (actor or user).id, "2fa_disable", "user", user.id)
 
 
 def update_user(session: Session, admin: User, user: User, role: str | None, is_active: bool | None) -> None:

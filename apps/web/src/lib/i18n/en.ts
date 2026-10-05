@@ -359,6 +359,7 @@ export const en: Messages = {
       permissions: "Permissions",
       session: "Sessions",
       scan_link: "Upload link",
+      invitation: "Invitation",
     },
   },
   account: {

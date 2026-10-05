@@ -228,3 +228,15 @@ def test_account_events_are_audited(client, mailbox):
     client.post("/api/auth/password", json={"current_password": PASSWORD, "new_password": NEW_PASSWORD})
     actions = {item["action"] for item in client.get("/api/audit", params={"page_size": 100}).json()["items"]}
     assert {"login", "invite", "password_change"} <= actions
+
+
+def test_audit_details_carry_no_e_mail_addresses(client, mailbox):
+    login(client)
+    client.post("/api/users/invitations", json={"email": "convidada@exemplo.com"})
+    client.post("/api/auth/login", json={"email": "estranho@exemplo.com", "password": "x"})
+    client.post("/api/auth/email", json={"email": "novo@exemplo.com", "password": PASSWORD})
+    client.post("/api/scan-links", json={"label": "Maria Souza, admissão"})
+    entries = client.get("/api/audit", params={"page_size": 100}).json()["items"]
+    texts = " ".join(str(entry["details"]) for entry in entries)
+    assert "@" not in texts
+    assert "Maria" not in texts

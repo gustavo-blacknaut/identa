@@ -557,7 +557,7 @@ def account_revoke_sessions(user_id: int, admin: AdminDep, session: SessionDep) 
     user = load_account(session, user_id)
     count = len(active_sessions(session, user.id))
     revoke_all(session, user.id)
-    record(session, admin.id, "revoke", "session", None, f"{count} sessão(ões) de {user.email}")
+    record(session, admin.id, "revoke", "user", user.id, f"{count} sessão(ões)")
     session.commit()
     return {"revoked": count}
 
