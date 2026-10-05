@@ -163,6 +163,8 @@ O comando exige o PostgreSQL vazio, copia todas as tabelas, ajusta as sequência
 
 ## Testes
 
+O CI também roda, a cada push e toda segunda-feira, gitleaks no histórico do Git, Trivy nas dependências, nos Dockerfiles e nas imagens, e CodeQL no Python e no TypeScript. Para barrar segredos antes do commit, instale o [pre-commit](https://pre-commit.com) e rode `pre-commit install`; o gancho do gitleaks já está em `.pre-commit-config.yaml`.
+
 ```bash
 docker compose --profile tests run --rm tests
 ```
