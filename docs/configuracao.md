@@ -68,7 +68,7 @@ Para desenvolvimento, `docker compose --profile dev up -d mailpit` sobe o [Mailp
 | Variável | Padrão | Obrigatória | Em execução | Descrição |
 | --- | --- | --- | --- | --- |
 | `IDENTA_PASSWORD_MIN_LENGTH` | `10` | não | sim | Tamanho mínimo da senha. |
-| `IDENTA_PASSWORD_REQUIRE_MIXED` | `true` | não | sim | Exige letras com números ou símbolos. A senha nunca pode conter o e-mail. |
+| `IDENTA_PASSWORD_REQUIRE_MIXED` | `true` | não | sim | Exige letras com números ou símbolos. A senha nunca pode conter o e-mail nem estar entre as 10 mil senhas mais vazadas (lista do SecLists, consultada localmente). |
 | `IDENTA_ARGON2_TIME_COST`, `IDENTA_ARGON2_MEMORY_KIB`, `IDENTA_ARGON2_PARALLELISM` | `3`, `65536`, `4` | não | não | Custo do hash Argon2id das senhas. O mínimo de memória segue a recomendação da OWASP (19 MiB). Ao mudar, cada senha é recalculada no próximo login. Cada login usa essa memória por alguns instantes; considere isso no limite de memória do container. |
 | `IDENTA_LOGIN_MAX_ATTEMPTS` | `5` | não | sim | Erros seguidos que bloqueiam a conta. Além disso, cada IP tem limite de 20 tentativas em 5 minutos. |
 | `IDENTA_LOGIN_LOCK_MINUTES` | `15` | não | sim | Duração do bloqueio. Um administrador pode desbloquear antes. |
