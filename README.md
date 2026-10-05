@@ -103,7 +103,7 @@ cd apps\api
 mkdir data
 python -m identa.cli download-models
 alembic upgrade head
-uvicorn identa.main:create_app --factory --host 127.0.0.1 --port 8000
+uvicorn identa.main:create_app --factory --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
 E em outro:

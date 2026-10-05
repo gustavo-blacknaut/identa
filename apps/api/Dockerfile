@@ -33,4 +33,4 @@ RUN useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nolog
 USER identa
 ENV IDENTA_STORAGE_DIR=/data/storage
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn identa.main:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn identa.main:create_app --factory --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*' --no-access-log"]
