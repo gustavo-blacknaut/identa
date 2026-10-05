@@ -114,3 +114,23 @@ def test_validation_errors_do_not_echo_the_submitted_values(client):
     assert secret not in response.text
     assert "12345" not in response.text
     assert response.json()["detail"][0]["loc"] == ["body", "email"]
+
+
+def test_production_refuses_insecure_settings(monkeypatch):
+    monkeypatch.setenv("IDENTA_ENCRYPTION_KEY", generate_key())
+    monkeypatch.setenv("IDENTA_SECRET_KEY", generate_key())
+    monkeypatch.setenv("IDENTA_PRODUCTION", "true")
+    monkeypatch.setenv("IDENTA_PUBLIC_URL", "http://192.168.0.10:8090")
+    with pytest.raises(ConfigurationError) as error:
+        load_settings(_env_file=None)
+    assert "IDENTA_SECURE_COOKIES=true" in str(error.value)
+    assert "https://" in str(error.value)
+
+
+def test_production_accepts_secure_settings(monkeypatch):
+    monkeypatch.setenv("IDENTA_ENCRYPTION_KEY", generate_key())
+    monkeypatch.setenv("IDENTA_SECRET_KEY", generate_key())
+    monkeypatch.setenv("IDENTA_PRODUCTION", "true")
+    monkeypatch.setenv("IDENTA_SECURE_COOKIES", "true")
+    monkeypatch.setenv("IDENTA_PUBLIC_URL", "https://identa.exemplo.com.br")
+    assert load_settings(_env_file=None).production is True

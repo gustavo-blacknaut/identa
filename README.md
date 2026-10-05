@@ -65,7 +65,7 @@ docker compose up -d --build
 
 Abra `http://127.0.0.1:8090`. Na primeira visita aparece a configuração inicial, que cria o administrador. Os demais usuários entram por convite em *Usuários*.
 
-Só a interface é publicada no host. Para acessar de outros aparelhos da rede, use `IDENTA_BIND=0.0.0.0`. Para expor na internet, coloque um proxy com HTTPS na frente e ligue `IDENTA_SECURE_COOKIES=true`.
+Só a interface é publicada no host. Para acessar de outros aparelhos da rede, use `IDENTA_BIND=0.0.0.0`. Para expor na internet, coloque um proxy com HTTPS na frente e ligue `IDENTA_PRODUCTION=true`, `IDENTA_SECURE_COOKIES=true` e `IDENTA_PUBLIC_URL` com o endereço `https://`. Com `IDENTA_PRODUCTION=true` a API se recusa a subir se faltar algum desses itens.
 
 E-mail em desenvolvimento: `docker compose --profile dev up -d mailpit` e, no `.env`, `IDENTA_SMTP_HOST=mailpit`, `IDENTA_SMTP_PORT=1025`, `IDENTA_SMTP_SECURITY=none`, `IDENTA_SMTP_FROM=identa@exemplo.com.br`. As mensagens aparecem em `http://127.0.0.1:8025`. Sem SMTP, convites e links de redefinição aparecem na tela para o administrador copiar.
 

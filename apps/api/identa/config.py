@@ -32,6 +32,7 @@ class OcrSettings(BaseSettings):
 
 
 class Settings(OcrSettings):
+    production: bool = False
     database_url: str = "sqlite:///./data/identa.db"
     database_password: str = ""
     secret_key: str = ""
@@ -130,7 +131,22 @@ class Settings(OcrSettings):
             self.database_url = url.render_as_string(hide_password=False)
         if self.smtp_host and not self.smtp_from:
             raise ValueError("IDENTA_SMTP_FROM: obrigatório quando IDENTA_SMTP_HOST está definido")
+        if self.production:
+            self.refuse_insecure_production()
         return self
+
+    def refuse_insecure_production(self) -> None:
+        problems = []
+        if not self.secure_cookies:
+            problems.append("IDENTA_SECURE_COOKIES=true")
+        if not self.public_url.startswith("https://"):
+            problems.append("IDENTA_PUBLIC_URL com https://")
+        if not self.encryption_enabled:
+            problems.append("IDENTA_ENCRYPTION_ENABLED=true")
+        if self.smtp_host and self.smtp_security == "none":
+            problems.append("IDENTA_SMTP_SECURITY starttls ou ssl")
+        if problems:
+            raise ValueError("IDENTA_PRODUCTION: em produção é obrigatório " + ", ".join(problems))
 
     @property
     def previous_keys(self) -> list[str]:

@@ -79,6 +79,7 @@ Para desenvolvimento, `docker compose --profile dev up -d mailpit` sobe o [Mailp
 | `IDENTA_VERIFY_HOURS` | `48` | não | não | Validade do link de confirmação de e-mail. |
 | `IDENTA_SCAN_LINK_HOURS` | `48` | não | sim | Validade padrão do link de envio remoto. |
 | `IDENTA_SECURE_COOKIES` | `false` | não | não | Marca os cookies como `Secure`. Ligue quando houver HTTPS. |
+| `IDENTA_PRODUCTION` | `false` | não | não | Modo produção. A API recusa subir sem `IDENTA_SECURE_COOKIES=true`, `IDENTA_PUBLIC_URL` com `https://`, criptografia ligada e, com SMTP, `IDENTA_SMTP_SECURITY` diferente de `none`. Ligue em toda instalação exposta na internet. |
 
 ## Instância e interface
 
