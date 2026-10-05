@@ -18,6 +18,7 @@ from identa.services.audit import current_ip
 from identa.services.retention import start_retention_worker
 from identa.services.settings import load_runtime
 from identa.storage.file_store import FileStore
+from identa.web.limits import BodySizeLimit
 from identa.web.routes import public_router, router
 
 CSRF_HEADER = "x-requested-with"
@@ -96,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         same_site="strict",
         https_only=settings.secure_cookies,
     )
+    application.add_middleware(BodySizeLimit)
     return application
 
 
