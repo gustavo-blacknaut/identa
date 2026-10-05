@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,7 @@ from identa.services.documents import (
     reprocess_document,
     review_document,
 )
+from identa.services.export import export_person
 from identa.services.people import PersonUpdateError, update_person, verify_person
 from identa.services.queries import MAX_PAGE_SIZE, ListFilters, list_audit, list_documents, list_people
 from identa.services.scan_links import LinkState, create_link, find_by_token, link_state, list_links, revoke_link, submit_to_link
@@ -344,6 +346,23 @@ def show_person(
     record(session, user.id, "view", "person", person.id)
     session.commit()
     return person_detail(person, allow_reveal(session, user, runtime, reveal, "person", person.id))
+
+
+@router.get("/people/{person_id}/export")
+def export_person_data(person_id: int, user: Viewer, session: SessionDep, runtime: RuntimeDep) -> JSONResponse:
+    if Permission.DATA_REVEAL not in runtime.permissions_of(user.role):
+        raise HTTPException(403, "Você não tem permissão para exportar os dados completos.")
+    person = load_person(session, person_id)
+    content = export_person(session, person)
+    record(session, user.id, "export", "person", person.id)
+    session.commit()
+    return JSONResponse(
+        content,
+        headers={
+            "Content-Disposition": f'attachment; filename="pessoa-{person.id}.json"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.put("/people/{person_id}")

@@ -84,6 +84,8 @@ export const api = {
     unwrap(client.PUT("/api/people/{person_id}", { params: { path: { person_id: id }, query: { reveal } }, body: { values } })),
   verifyPerson: (id: number, reveal = false) =>
     unwrap(client.POST("/api/people/{person_id}/verify", { params: { path: { person_id: id }, query: { reveal } } })),
+  exportPerson: (id: number) =>
+    unwrap(client.GET("/api/people/{person_id}/export", { params: { path: { person_id: id } }, parseAs: "blob" })),
   deletePerson: (id: number) => unwrap(client.DELETE("/api/people/{person_id}", { params: { path: { person_id: id } } })),
   documents: (query: ListQuery) =>
     unwrap(client.GET("/api/documents", { params: { query } })) as Promise<Page<DocumentSummary>>,

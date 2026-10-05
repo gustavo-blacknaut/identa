@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, CircleCheck, Eye, FilePlus2, Pencil, Save, ShieldCheck, Trash2, X } from "lucide-react";
+import { CircleAlert, CircleCheck, Download, Eye, FilePlus2, Pencil, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
@@ -130,6 +130,23 @@ export default function PersonPage() {
     }
   };
 
+  const exportData = async () => {
+    setBusy(true);
+    try {
+      const blob = await api.exportPerson(person.id);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `pessoa-${person.id}.json`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      toast(t.person.exported);
+    } catch (caught) {
+      toast(caught instanceof Error ? caught.message : t.common.error, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const remove = async () => {
     await api.deletePerson(person.id);
     toast(t.people.deleted(person.full_name ?? t.people.fallbackName));
@@ -167,6 +184,12 @@ export default function PersonPage() {
                 <FilePlus2 size={16} strokeWidth={1.75} />
                 {t.person.addDocument}
               </Link>
+            )}
+            {can("data.reveal") && (
+              <button className="button button-secondary" type="button" onClick={exportData} disabled={busy}>
+                <Download size={16} strokeWidth={1.75} />
+                {t.person.export}
+              </button>
             )}
             {can("people.delete") && (
               <button className="button button-danger-ghost" type="button" onClick={() => setDeleting(true)}>

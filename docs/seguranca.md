@@ -11,6 +11,8 @@
 
 O Identa é uma ferramenta; quem a instala é o controlador. O uso previsto é cadastro de pessoas a partir dos próprios documentos delas, por exemplo em admissão de funcionários, com base no art. 7º, II (obrigação legal) ou V (execução de contrato) da LGPD. Quem operar o sistema deve registrar a base legal adotada, avisar o titular no momento da coleta e configurar a retenção de acordo.
 
+Pedidos do titular: *Exportar dados*, na página da pessoa, baixa em JSON os dados consolidados, os campos e o texto de cada documento, os dados das imagens e o histórico de acessos ao cadastro (art. 18, II e V). *Apagar* remove a pessoa, os documentos e as imagens (art. 18, VI). As duas ações ficam na auditoria; exportar exige a permissão de ver dados completos.
+
 ## Quem pode atacar
 
 | Atacante | O que tenta |
