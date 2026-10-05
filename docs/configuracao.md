@@ -136,6 +136,7 @@ O Compose não lê segredos do `.env`. Eles ficam em arquivos na pasta `secrets/
 | `database_app_password` | migrate, api | Senha do usuário `POSTGRES_APP_USER`, com que a API roda. |
 | `secret_key` | migrate, api | `IDENTA_SECRET_KEY`. |
 | `encryption_key` | migrate, api | `IDENTA_ENCRYPTION_KEY`. |
+| `backup_passphrase` | `scripts/backup.sh` | Senha que cifra os backups. Não é montada em nenhum container. |
 
 `scripts/gerar-segredos.sh` (ou `scripts\gerar-segredos.ps1` no Windows) cria os arquivos que faltam. Se o `.env` já tiver `POSTGRES_PASSWORD`, `IDENTA_SECRET_KEY` ou `IDENTA_ENCRYPTION_KEY`, o valor é copiado, então uma instalação existente continua lendo os mesmos dados; depois apague esses valores do `.env`. Arquivo que já existe nunca é sobrescrito.
 

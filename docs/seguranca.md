@@ -52,6 +52,8 @@ Fora do escopo: comprometimento do sistema operacional do servidor, de quem tem 
 | 22 | Baixa | CI | Sem varredura de segredos, de imagens e de código. | gitleaks, Trivy e CodeQL no CI, gitleaks no pre-commit. |
 | 23 | Baixa | README | Backup sem criptografia. | Backup cifrado e restauração testada. |
 
+Situação em 05/10/2026: os 23 achados foram corrigidos, cada um em um commit próprio. Pontos que dependem de quem instala: ligar `IDENTA_PRODUCTION=true` em instalação exposta, guardar `secrets/` fora do servidor e agendar `scripts/backup.sh`.
+
 Itens conferidos sem problema: CSRF (cabeçalho obrigatório e SameSite=Strict), consultas só pelo ORM, paginação limitada a 100, tokens de convite e redefinição aleatórios, de uso único e guardados como hash, segredo do 2FA cifrado, permissões checadas no servidor em todas as rotas, retorno do login sem open redirect, nenhuma busca de URL externa (sem SSRF), nada sensível em `localStorage` ou em variáveis `NEXT_PUBLIC_`, imagens derivadas sem EXIF.
 
 ## Fora desta rodada

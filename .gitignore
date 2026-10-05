@@ -4,6 +4,7 @@
 
 /data/
 /secrets/
+/backups/
 /storage/
 /uploads/
 *.db

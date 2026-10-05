@@ -43,4 +43,5 @@ Write-Secret "postgres_password" "POSTGRES_PASSWORD" { New-RandomPassword }
 Write-Secret "database_app_password" "" { New-RandomPassword }
 Write-Secret "secret_key" "IDENTA_SECRET_KEY" { New-RandomKey }
 Write-Secret "encryption_key" "IDENTA_ENCRYPTION_KEY" { New-RandomKey }
-Write-Output "Segredos em $secretsDir. Guarde uma cópia de encryption_key fora do servidor: sem ela as imagens não podem ser lidas."
+Write-Secret "backup_passphrase" "" { New-RandomPassword }
+Write-Output "Segredos em $secretsDir. Guarde uma cópia de encryption_key e de backup_passphrase fora do servidor: sem elas as imagens e os backups não podem ser lidos."

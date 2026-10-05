@@ -49,4 +49,5 @@ write_secret postgres_password POSTGRES_PASSWORD random_password
 write_secret database_app_password "" random_password
 write_secret secret_key IDENTA_SECRET_KEY random_key
 write_secret encryption_key IDENTA_ENCRYPTION_KEY random_key
-echo "Segredos em $secrets_dir. Guarde uma cópia de encryption_key fora do servidor: sem ela as imagens não podem ser lidas."
+write_secret backup_passphrase "" random_password
+echo "Segredos em $secrets_dir. Guarde uma cópia de encryption_key e de backup_passphrase fora do servidor: sem elas as imagens e os backups não podem ser lidos."

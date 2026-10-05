@@ -137,21 +137,27 @@ Suporte a GPU: AMD, Intel e NVIDIA via DirectML no Windows (só a AMD acima foi 
 
 ## Backup e restauração
 
-O que precisa de backup: o banco, o volume `storage` (imagens) e a pasta `secrets/`. Sem `secrets/encryption_key` as imagens do backup são ilegíveis.
+O que precisa de backup: o banco, as imagens (pasta `storage`) e a pasta `secrets/`. Os scripts abaixo cuidam dos dois primeiros; guarde `secrets/` à parte, fora do servidor, porque sem `secrets/encryption_key` as imagens e os dados cifrados são ilegíveis e sem `secrets/backup_passphrase` o backup não abre.
 
 ```bash
-docker compose exec -T postgres pg_dump -U identa -Fc identa > identa.dump
-docker run --rm -v identa_storage:/data -v "$PWD":/backup alpine:3.24 tar czf /backup/storage.tar.gz -C /data .
+sh scripts/backup.sh
 ```
 
-Restaurar num servidor novo, com o mesmo `.env` e a mesma pasta `secrets/`:
+Gera `backups/identa-AAAAMMDDTHHMMSSZ.tar.gz.gpg`: dump do PostgreSQL e cópia das imagens, com somas SHA-256, cifrados com AES-256 (GnuPG, senha em `secrets/backup_passphrase`). Pode receber outra pasta de destino como argumento. Para agendar, uma linha no cron basta, por exemplo `15 3 * * * cd /opt/identa && sh scripts/backup.sh`; copie os arquivos para fora do servidor.
+
+Conferir um backup sem tocar na instalação (restaura num PostgreSQL temporário, confere as somas e mostra as contagens):
 
 ```bash
-docker compose up -d postgres
-docker compose exec -T postgres pg_restore -U identa -d identa --clean --if-exists --no-owner --no-privileges < identa.dump
-docker run --rm -v identa_storage:/data -v "$PWD":/backup alpine:3.24 sh -c "tar xzf /backup/storage.tar.gz -C /data && chown -R 10001 /data"
-docker compose up -d
+sh scripts/restaurar-backup.sh backups/identa-20261005T031500Z.tar.gz.gpg --verificar
 ```
+
+Restaurar de verdade, substituindo o banco e as imagens (num servidor novo, primeiro copie o `.env` e a pasta `secrets/`):
+
+```bash
+sh scripts/restaurar-backup.sh backups/identa-20261005T031500Z.tar.gz.gpg --confirmar
+```
+
+O script para a API e a interface, restaura o banco e as imagens e sobe tudo de novo; o serviço `migrate` reaplica as migrações e as permissões do usuário da aplicação. Requisitos no host: Docker, `gpg`, `tar` e `sha256sum`.
 
 Migrar uma instalação SQLite para PostgreSQL:
 
@@ -159,11 +165,9 @@ Migrar uma instalação SQLite para PostgreSQL:
 docker compose run --rm --no-deps -v "$PWD/data:/import" api python -m identa.cli sqlite-to-postgres --source sqlite:////import/identa.db --target "postgresql://identa:SENHA@postgres:5432/identa"
 ```
 
-O comando exige o PostgreSQL vazio, copia todas as tabelas, ajusta as sequências e confere as contagens. As imagens não mudam de lugar; copie o diretório de armazenamento para o volume.
+O comando exige o PostgreSQL vazio, copia todas as tabelas, ajusta as sequências e confere as contagens. As imagens não mudam de lugar; copie o diretório de armazenamento para a pasta `storage`.
 
 ## Testes
-
-O CI também roda, a cada push e toda segunda-feira, gitleaks no histórico do Git, Trivy nas dependências, nos Dockerfiles e nas imagens, e CodeQL no Python e no TypeScript. Para barrar segredos antes do commit, instale o [pre-commit](https://pre-commit.com) e rode `pre-commit install`; o gancho do gitleaks já está em `.pre-commit-config.yaml`.
 
 ```bash
 docker compose --profile tests run --rm tests
@@ -178,6 +182,8 @@ cd apps/web && npx playwright install chromium && npx playwright test --project=
 ```
 
 O Playwright sobe a API com dados fictícios e um build de produção da interface. O teste de responsividade falha se qualquer rota tiver rolagem horizontal em 360, 375, 768, 1024, 1280 e 1920 px, e em 640 px (1280 com zoom de 200%), ou se um alvo de toque tiver menos de 44 px em telas pequenas. `SCREENSHOTS=1 npx playwright test --project=setup --project=screenshots` regenera as capturas desta página; `python scripts/flow_gif.py` monta o GIF.
+
+O CI também roda, a cada push e toda segunda-feira, gitleaks no histórico do Git, Trivy nas dependências, nos Dockerfiles e nas imagens, e CodeQL no Python e no TypeScript. Para barrar segredos antes do commit, instale o [pre-commit](https://pre-commit.com) e rode `pre-commit install`; o gancho do gitleaks já está em `.pre-commit-config.yaml`.
 
 ## Limitações
 
