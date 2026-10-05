@@ -19,9 +19,9 @@ Valores medidos com `apps/api/scripts/benchmark.py`, com imagens sintéticas de 
 
 | CPU | GPU | RAM | Sistema | Driver da GPU | Python | Tempo médio por imagem, CPU | Tempo médio por imagem, GPU |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| AMD Ryzen 5 1600AF (6 núcleos / 12 threads) | AMD Radeon RX 590 GME, 8 GB | 19,9 GB | Windows 10 Pro 22H2, build 19045 | 31.0.21924.61 (Adrenalin 26.1.1) | 3.12.15 | 1.854 a 2.159 ms (nativo) · 1.772 a 2.107 ms (Docker) | 766 a 776 ms (DirectML, nativo) |
+| AMD Ryzen 5 1600AF (6 núcleos / 12 threads) | AMD Radeon RX 590 GME, 8 GB | 19,9 GB | Windows 10 Pro 22H2, build 19045 | 31.0.21924.61 (Adrenalin 26.1.1) | 3.12.15 | 2.743 a 4.858 ms (nativo) · 1.772 a 2.107 ms (Docker) | 829 a 852 ms (DirectML, nativo) |
 
-As faixas cobrem os lotes de 1, 8 e 32 imagens. Os tempos variam entre execuções conforme a carga do Windows: uma rodada anterior na mesma máquina mediu 2.527 a 3.032 ms na CPU e 574 a 734 ms na GPU. Em todas as rodadas e em todos os lotes a GPU foi mais rápida, de 2,4 a 5,2 vezes.
+As faixas cobrem os lotes de 1, 8 e 32 imagens da última rodada, feita com o Docker ligado na mesma máquina. Rodadas anteriores mediram 1.854 a 3.032 ms na CPU e 574 a 776 ms na GPU. Em todas as rodadas e em todos os lotes a GPU foi mais rápida, de 2,4 a 5,9 vezes.
 
 ## Suporte a GPU
 

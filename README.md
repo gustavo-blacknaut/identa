@@ -47,7 +47,7 @@ cd identa
 cp .env.example .env
 ```
 
-No `.env`, preencha `POSTGRES_PASSWORD`, `IDENTA_SECRET_KEY` e `IDENTA_ENCRYPTION_KEY`. Para gerar as duas chaves:
+No `.env`, defina primeiro `POSTGRES_PASSWORD` com uma senha longa; o Compose recusa qualquer comando sem ela. Depois gere as duas chaves, rodando o comando duas vezes, e cole uma em `IDENTA_SECRET_KEY` e outra em `IDENTA_ENCRYPTION_KEY`:
 
 ```bash
 docker compose run --rm --no-deps api python -m identa.cli generate-key
@@ -111,7 +111,9 @@ Medido com `scripts/benchmark.py` em imagens sintéticas. Relatórios completos:
 
 | CPU | GPU | RAM | Sistema | Tempo por imagem, CPU | Tempo por imagem, GPU |
 | --- | --- | --- | --- | --- | --- |
-| AMD Ryzen 5 1600AF (6 núcleos / 12 threads) | AMD Radeon RX 590 GME, 8 GB, driver 31.0.21924.61 | 19,9 GB | Windows 10 Pro 22H2 | 1.854 a 2.159 ms nativo, 1.772 a 2.107 ms no Docker | 766 a 776 ms (DirectML) |
+| AMD Ryzen 5 1600AF (6 núcleos / 12 threads) | AMD Radeon RX 590 GME, 8 GB, driver 31.0.21924.61 | 19,9 GB | Windows 10 Pro 22H2 | 2.743 a 4.858 ms nativo, 1.772 a 2.107 ms no Docker | 829 a 852 ms (DirectML) |
+
+Os números nativos são da última rodada, feita com o Docker do Identa ligado na mesma máquina. Somando as três rodadas medidas, a CPU ficou entre 1.854 e 4.858 ms por imagem e a GPU entre 574 e 852 ms; a GPU foi mais rápida em todos os lotes de todas as rodadas.
 
 Suporte a GPU: AMD, Intel e NVIDIA via DirectML no Windows (só a AMD acima foi testada) e NVIDIA via CUDA (implementado, não testado). Detalhes e solução de problemas em [docs/gpu.md](docs/gpu.md).
 
