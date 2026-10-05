@@ -141,3 +141,22 @@ def test_disabled_account_cannot_log_in(client):
     client.post("/api/auth/logout")
     response = client.post("/api/auth/login", json={"email": "leitora@exemplo.com.br", "password": PASSWORD})
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "payload"),
+    [
+        ("get", "/api/public/scan/{token}", None),
+        ("post", "/api/auth/email/verify", {"token": "{token}"}),
+        ("post", "/api/auth/invitations/{token}/accept", {"name": "Pessoa", "password": "senha-boa-12345"}),
+    ],
+)
+def test_token_guessing_is_throttled(client, method, path, payload):
+    def attempt(index: int):
+        token = f"token-invalido-{index}"
+        body = {key: value.format(token=token) for key, value in payload.items()} if payload else None
+        return client.request(method.upper(), path.format(token=token), json=body)
+
+    statuses = {attempt(index).status_code for index in range(20)}
+    assert 429 not in statuses
+    assert attempt(20).status_code == 429

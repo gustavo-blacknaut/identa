@@ -325,11 +325,13 @@ def preview_invitation(request: Request, token: str, session: SessionDep) -> Inv
 def accept_invitation(
     request: Request, response: Response, token: str, payload: AcceptInviteIn, session: SessionDep, runtime: RuntimeDep
 ) -> UserOut:
-    guard_ip(request, "invite")
+    key = guard_ip(request, "invite")
     try:
         user = accounts.accept_invite(session, token, payload.name, payload.password, runtime)
     except (InvalidTokenError, AccountError, WeakPasswordError) as error:
         session.commit()
+        if isinstance(error, InvalidTokenError):
+            request.app.state.login_throttle.record_failure(key)
         raise HTTPException(400, str(error)) from error
     return start_session(request, response, session, user, runtime)
 

@@ -538,16 +538,21 @@ def logo(store: StoreDep, runtime: RuntimeDep) -> Response:
     )
 
 
-def active_link(session: Session, token: str) -> ScanLink:
+def active_link(request: Request, session: Session, token: str) -> ScanLink:
+    throttle = request.app.state.login_throttle
+    key = f"scan:{request.client.host if request.client else 'unknown'}"
+    if throttle.is_blocked(key):
+        raise HTTPException(429, "Muitas tentativas. Aguarde alguns minutos.")
     link = find_by_token(session, token)
     if link is None:
+        throttle.record_failure(key)
         raise HTTPException(404, "Link inválido.")
     return link
 
 
 @public_router.get("/scan/{token}")
-def public_link(token: str, session: SessionDep) -> PublicLinkOut:
-    link = active_link(session, token)
+def public_link(request: Request, token: str, session: SessionDep) -> PublicLinkOut:
+    link = active_link(request, session, token)
     return PublicLinkOut(label=link.label, state=link_state(link), expires_at=link.expires_at)
 
 
@@ -562,14 +567,7 @@ async def public_upload(
     front: Annotated[UploadFile | None, File()] = None,
     back: Annotated[UploadFile | None, File()] = None,
 ) -> dict[str, str]:
-    throttle = request.app.state.login_throttle
-    key = f"scan:{request.client.host if request.client else 'unknown'}"
-    if throttle.is_blocked(key):
-        raise HTTPException(429, "Muitas tentativas. Aguarde alguns minutos.")
-    link = find_by_token(session, token)
-    if link is None:
-        throttle.record_failure(key)
-        raise HTTPException(404, "Link inválido.")
+    link = active_link(request, session, token)
     if link_state(link) != LinkState.ACTIVE:
         raise HTTPException(410, "Este link já foi usado ou expirou.")
     sides = await read_sides(runtime, front, back)
