@@ -238,7 +238,7 @@ def confirm_two_factor(session: Session, user: User, secret_key: str, code: str)
     if not totp.verify_code(unseal(secret_key, user.totp_secret), code):
         raise AccountError("Código incorreto. Confira o horário do celular e tente de novo.")
     codes = totp.new_recovery_codes()
-    user.recovery_codes = [totp.hash_recovery_code(item) for item in codes]
+    user.recovery_codes = [totp.hash_recovery_code(secret_key, item) for item in codes]
     user.totp_enabled_at = utc_now()
     record(session, user.id, "2fa_enable", "user", user.id)
     return codes
@@ -249,10 +249,10 @@ def check_second_factor(session: Session, user: User, secret_key: str, code: str
         return True
     if totp.verify_code(unseal(secret_key, user.totp_secret), code):
         return True
-    hashed = totp.hash_recovery_code(code)
     remaining = list(user.recovery_codes or [])
-    if hashed in remaining:
-        remaining.remove(hashed)
+    matched = totp.find_recovery_code(remaining, secret_key, code)
+    if matched is not None:
+        remaining.remove(matched)
         user.recovery_codes = remaining
         record(session, user.id, "2fa_recovery_code", "user", user.id, f"{len(remaining)} código(s) restante(s)")
         return True

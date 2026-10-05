@@ -1,9 +1,11 @@
+import hashlib
 import re
 
 import pyotp
 import pytest
 from fastapi.testclient import TestClient
 
+from identa.auth import totp
 from identa.auth.routes import REFRESH_COOKIE
 from identa.mail.sender import Mailer, OutgoingMail
 from tests.conftest import CSRF_HEADERS, EMAIL, PASSWORD, add_user, login
@@ -240,3 +242,16 @@ def test_audit_details_carry_no_e_mail_addresses(client, mailbox):
     texts = " ".join(str(entry["details"]) for entry in entries)
     assert "@" not in texts
     assert "Maria" not in texts
+
+
+def test_recovery_codes_are_keyed_hashes():
+    stored = totp.hash_recovery_code("chave-do-servidor-" * 2, "abcde-12345")
+    assert stored.startswith("hmac:")
+    assert stored != totp.hash_recovery_code("outra-chave-do-servidor-" * 2, "abcde-12345")
+    assert totp.find_recovery_code([stored], "chave-do-servidor-" * 2, "ABCDE12345") == stored
+    assert totp.find_recovery_code([stored], "outra-chave-do-servidor-" * 2, "abcde-12345") is None
+
+
+def test_recovery_codes_saved_before_keyed_hashes_still_work():
+    legacy = hashlib.sha256(b"abcde12345").hexdigest()
+    assert totp.find_recovery_code([legacy], "chave-do-servidor-" * 2, "abcde-12345") == legacy
