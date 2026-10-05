@@ -235,7 +235,14 @@ def login_two_factor(
 def refresh(request: Request, response: Response, session: SessionDep, runtime: RuntimeDep) -> UserOut:
     raw_token = request.cookies.get(REFRESH_COOKIE)
     rotated = (
-        rotate_refresh_token(session, raw_token, runtime.refresh_days, request.headers.get("user-agent"), client_ip(request))
+        rotate_refresh_token(
+            session,
+            raw_token,
+            runtime.refresh_days,
+            runtime.session_idle_hours,
+            request.headers.get("user-agent"),
+            client_ip(request),
+        )
         if raw_token
         else None
     )

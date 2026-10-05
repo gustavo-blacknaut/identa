@@ -62,6 +62,7 @@ class Settings(OcrSettings):
     login_lock_minutes: int = Field(15, ge=1)
     access_minutes: int = Field(15, ge=1, le=1440)
     refresh_days: int = Field(30, ge=1, le=365)
+    session_idle_hours: int = Field(12, ge=1, le=720)
     invite_hours: int = Field(72, ge=1, le=720)
     reset_minutes: int = Field(60, ge=5, le=1440)
     verify_hours: int = Field(48, ge=1, le=720)

@@ -21,15 +21,22 @@ def as_aware(moment: datetime) -> datetime:
 
 
 def issue_refresh_token(
-    session: Session, user: User, days: int, user_agent: str | None, ip: str | None
+    session: Session,
+    user: User,
+    days: int,
+    user_agent: str | None,
+    ip: str | None,
+    started_at: datetime | None = None,
 ) -> tuple[RefreshToken, str]:
     raw_token = secrets.token_urlsafe(TOKEN_BYTES)
+    started = as_aware(started_at) if started_at else utc_now()
     token = RefreshToken(
         user_id=user.id,
         token_hash=hash_token(raw_token),
         user_agent=(user_agent or "")[:USER_AGENT_LENGTH] or None,
         ip_address=ip,
-        expires_at=utc_now() + timedelta(days=days),
+        started_at=started,
+        expires_at=started + timedelta(days=days),
     )
     session.add(token)
     session.flush()
@@ -45,7 +52,7 @@ def revoke_all(session: Session, user_id: int) -> None:
 
 
 def rotate_refresh_token(
-    session: Session, raw_token: str, days: int, user_agent: str | None, ip: str | None
+    session: Session, raw_token: str, days: int, idle_hours: int, user_agent: str | None, ip: str | None
 ) -> tuple[User, RefreshToken, str] | None:
     token = session.scalar(select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw_token)))
     if token is None:
@@ -55,12 +62,16 @@ def rotate_refresh_token(
         session.commit()
         return None
     user = session.get(User, token.user_id)
-    if as_aware(token.expires_at) <= utc_now() or user is None or not user.is_active:
-        token.revoked_at = utc_now()
+    now = utc_now()
+    started = as_aware(token.started_at or token.created_at)
+    expired = as_aware(token.expires_at) <= now or started + timedelta(days=days) <= now
+    idle = as_aware(token.created_at) + timedelta(hours=idle_hours) <= now
+    if expired or idle or user is None or not user.is_active:
+        token.revoked_at = now
         session.commit()
         return None
-    token.revoked_at = utc_now()
-    new_token, raw = issue_refresh_token(session, user, days, user_agent or token.user_agent, ip)
+    token.revoked_at = now
+    new_token, raw = issue_refresh_token(session, user, days, user_agent or token.user_agent, ip, started)
     return user, new_token, raw
 
 

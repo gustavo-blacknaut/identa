@@ -69,7 +69,8 @@ Para desenvolvimento, `docker compose --profile dev up -d mailpit` sobe o [Mailp
 | `IDENTA_LOGIN_MAX_ATTEMPTS` | `5` | não | sim | Erros seguidos que bloqueiam a conta. Além disso, cada IP tem limite de 20 tentativas em 5 minutos. |
 | `IDENTA_LOGIN_LOCK_MINUTES` | `15` | não | sim | Duração do bloqueio. Um administrador pode desbloquear antes. |
 | `IDENTA_ACCESS_MINUTES` | `15` | não | não | Validade do cookie de acesso. |
-| `IDENTA_REFRESH_DAYS` | `30` | não | sim | Duração máxima de uma sessão sem novo login. |
+| `IDENTA_REFRESH_DAYS` | `30` | não | sim | Duração máxima de uma sessão desde o login. Renovar o acesso não estende esse prazo. |
+| `IDENTA_SESSION_IDLE_HOURS` | `12` | não | sim | Sessão sem nenhuma renovação por mais que isto exige novo login. |
 | `IDENTA_INVITE_HOURS` | `72` | não | sim | Validade do convite. |
 | `IDENTA_RESET_MINUTES` | `60` | não | não | Validade do link de redefinição de senha. |
 | `IDENTA_VERIFY_HOURS` | `48` | não | não | Validade do link de confirmação de e-mail. |
