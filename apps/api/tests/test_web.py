@@ -1,3 +1,5 @@
+import re
+
 from identa.db.models import Document, Person
 from tests.conftest import login
 from tests.synthetic import encode_jpeg, photograph, render_rg_back
@@ -124,3 +126,13 @@ def test_overview_lists_new_documents(client):
     assert overview["stats"]["pending"] == 1
     assert overview["documents"][0]["full_name"] == "MARIANA OLIVEIRA DOS SANTOS"
     assert overview["documents"][0]["thumbnail_url"].startswith("/api/images/")
+
+
+def test_images_are_served_inline_with_a_generated_name(client):
+    login(client)
+    upload_rg(client)
+    document = client.get("/api/overview").json()["documents"][0]
+    thumbnail = client.get(document["thumbnail_url"])
+    assert thumbnail.status_code == 200
+    pattern = rf'inline; filename="documento-{document["id"]}-(front|back)-thumbnail\.webp"'
+    assert re.fullmatch(pattern, thumbnail.headers["content-disposition"])

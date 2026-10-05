@@ -300,6 +300,13 @@ def remove_person(person_id: int, user: PersonRemover, session: SessionDep, stor
     return Response(status_code=204)
 
 
+IMAGE_EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic", "image/heif": "heif"}
+
+
+def image_filename(image: DocumentImage, variant: str, media_type: str) -> str:
+    return f"documento-{image.document_id}-{image.side}-{variant}.{IMAGE_EXTENSIONS.get(media_type, 'bin')}"
+
+
 @router.get("/images/{image_id}/{variant}")
 def image(image_id: int, variant: str, user: Viewer, session: SessionDep, store: StoreDep, runtime: RuntimeDep) -> Response:
     stored = session.get(DocumentImage, image_id)
@@ -318,7 +325,11 @@ def image(image_id: int, variant: str, user: Viewer, session: SessionDep, store:
     if variant in ("original", "processed"):
         record(session, user.id, "view", "image", stored.id, f"{variant} do documento #{stored.document_id}")
         session.commit()
-    return Response(store.load(path), media_type=media_type, headers={"Cache-Control": "private, max-age=300"})
+    headers = {
+        "Cache-Control": "private, max-age=300",
+        "Content-Disposition": f'inline; filename="{image_filename(stored, variant, media_type)}"',
+    }
+    return Response(store.load(path), media_type=media_type, headers=headers)
 
 
 @router.get("/documents/{document_id}")
