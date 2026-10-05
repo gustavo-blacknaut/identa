@@ -1,7 +1,10 @@
+from datetime import timedelta
+
 from fastapi.testclient import TestClient
 
 from identa.auth.routes import REFRESH_COOKIE
-from identa.db.models import Person
+from identa.db.base import utc_now
+from identa.db.models import Person, RefreshToken
 from tests.conftest import CSRF_HEADERS, login
 from tests.synthetic import encode_jpeg, photograph, render_rg_back
 
@@ -116,8 +119,10 @@ def test_person_detail_lists_other_data(client):
     person_id = upload(client)["person_id"]
     detail = client.get(f"/api/people/{person_id}").json()
     labels = {item["label"]: item["value"] for item in detail["other_data"]}
-    assert labels["Número do RG"] == "48.217.395-6"
+    assert labels["Número do RG"] == "48.2**.**5-6"
     assert labels["Órgão expedidor"] == "SSP/SP"
+    revealed = client.get(f"/api/people/{person_id}", params={"reveal": "true"}).json()
+    assert {item["label"]: item["value"] for item in revealed["other_data"]}["Número do RG"] == "48.217.395-6"
 
 
 def test_timezone_setting(client):
@@ -143,3 +148,36 @@ def test_audit_records_views_edits_and_ip(client):
     assert all(entry["ip_address"] for entry in entries)
     update = next(entry for entry in entries if entry["action"] == "update")
     assert update["details"] == "Naturalidade"
+
+
+def age_session(client, **moments):
+    with client.app_state.session_factory() as session:
+        for token in session.query(RefreshToken).all():
+            for name, value in moments.items():
+                setattr(token, name, value)
+        session.commit()
+
+
+def test_idle_session_requires_a_new_login(client):
+    login(client)
+    age_session(client, created_at=utc_now() - timedelta(hours=13))
+    client.cookies.delete("identa_session")
+    assert client.post("/api/auth/refresh").status_code == 401
+
+
+def test_renewing_does_not_extend_the_absolute_limit(client):
+    login(client)
+    age_session(client, started_at=utc_now() - timedelta(days=31))
+    client.cookies.delete("identa_session")
+    assert client.post("/api/auth/refresh").status_code == 401
+
+
+def test_renewal_keeps_the_original_start(client):
+    login(client)
+    with client.app_state.session_factory() as session:
+        first = session.query(RefreshToken).one().started_at
+    client.cookies.delete("identa_session")
+    assert client.post("/api/auth/refresh").status_code == 200
+    with client.app_state.session_factory() as session:
+        latest = session.query(RefreshToken).order_by(RefreshToken.id.desc()).first()
+        assert latest.started_at == first

@@ -10,6 +10,8 @@ Configuração inválida:
 
 `python -m identa.cli check-config` faz a mesma validação sem subir o servidor.
 
+Qualquer variável pode vir de um arquivo: `IDENTA_SECRET_KEY_FILE=/run/secrets/secret_key` lê o valor de `/run/secrets/secret_key`, sem espaços nem quebra de linha no fim. Se a variável sem `_FILE` também estiver preenchida, ela vale. O Compose usa esse formato para todos os segredos (ver *Docker Compose* abaixo).
+
 A coluna **Em execução** marca o que o administrador pode mudar em *Configurações* sem reiniciar. Nesses casos a variável é só o valor padrão; o que for salvo na tela fica no banco e vale até alguém clicar em "Usar padrão".
 
 ## Segredos e armazenamento
@@ -18,8 +20,10 @@ A coluna **Em execução** marca o que o administrador pode mudar em *Configura�
 | --- | --- | --- | --- | --- |
 | `IDENTA_SECRET_KEY` | — | sim | não | Assina os cookies de sessão e cifra o segredo do 2FA no banco. Mínimo de 32 caracteres. Trocar invalida sessões e 2FA ativos. |
 | `IDENTA_ENCRYPTION_ENABLED` | `true` | não | não | Criptografa imagens com AES-256-GCM. Desligado, grava sem criptografia; arquivos antigos criptografados continuam legíveis se a chave estiver definida. |
-| `IDENTA_ENCRYPTION_KEY` | — | com criptografia | não | Chave de 32 bytes em base64 (`python -m identa.cli generate-key`). Sem ela as imagens não podem ser lidas. |
+| `IDENTA_ENCRYPTION_KEY` | — | com criptografia | não | Chave de 32 bytes em base64 (`python -m identa.cli generate-key`). Cifra as imagens e os campos CPF, RG, CNH, MRZ, texto do OCR e dados extraídos. Sem ela nada disso pode ser lido. |
+| `IDENTA_ENCRYPTION_OLD_KEYS` | vazio | não | não | Chaves anteriores, separadas por vírgula. Servem só para ler dados e arquivos ainda não recifrados. Ver *Rotação de chave* em [seguranca.md](seguranca.md). |
 | `IDENTA_DATABASE_URL` | `sqlite:///./data/identa.db` | não | não | `sqlite:///caminho.db` ou `postgresql://usuario:senha@host:5432/banco`. No Compose é montada a partir de `POSTGRES_*`. |
+| `IDENTA_DATABASE_PASSWORD` | vazio | não | não | Senha do PostgreSQL, quando ela não está na URL. Substitui a senha da URL. No Compose vem de `secrets/database_app_password`. |
 | `IDENTA_STORAGE_DIR` | `./storage` | não | não | Pasta das imagens. No Compose, volume `storage` em `/data/storage`. |
 | `IDENTA_PUBLIC_URL` | vazio | não | não | Base dos links enviados por e-mail. Vazio usa o endereço da requisição. |
 
@@ -64,16 +68,19 @@ Para desenvolvimento, `docker compose --profile dev up -d mailpit` sobe o [Mailp
 | Variável | Padrão | Obrigatória | Em execução | Descrição |
 | --- | --- | --- | --- | --- |
 | `IDENTA_PASSWORD_MIN_LENGTH` | `10` | não | sim | Tamanho mínimo da senha. |
-| `IDENTA_PASSWORD_REQUIRE_MIXED` | `true` | não | sim | Exige letras com números ou símbolos. A senha nunca pode conter o e-mail. |
+| `IDENTA_PASSWORD_REQUIRE_MIXED` | `true` | não | sim | Exige letras com números ou símbolos. A senha nunca pode conter o e-mail nem estar entre as 10 mil senhas mais vazadas (lista do SecLists, consultada localmente). |
+| `IDENTA_ARGON2_TIME_COST`, `IDENTA_ARGON2_MEMORY_KIB`, `IDENTA_ARGON2_PARALLELISM` | `3`, `65536`, `4` | não | não | Custo do hash Argon2id das senhas. O mínimo de memória segue a recomendação da OWASP (19 MiB). Ao mudar, cada senha é recalculada no próximo login. Cada login usa essa memória por alguns instantes; considere isso no limite de memória do container. |
 | `IDENTA_LOGIN_MAX_ATTEMPTS` | `5` | não | sim | Erros seguidos que bloqueiam a conta. Além disso, cada IP tem limite de 20 tentativas em 5 minutos. |
 | `IDENTA_LOGIN_LOCK_MINUTES` | `15` | não | sim | Duração do bloqueio. Um administrador pode desbloquear antes. |
 | `IDENTA_ACCESS_MINUTES` | `15` | não | não | Validade do cookie de acesso. |
-| `IDENTA_REFRESH_DAYS` | `30` | não | sim | Duração máxima de uma sessão sem novo login. |
+| `IDENTA_REFRESH_DAYS` | `30` | não | sim | Duração máxima de uma sessão desde o login. Renovar o acesso não estende esse prazo. |
+| `IDENTA_SESSION_IDLE_HOURS` | `12` | não | sim | Sessão sem nenhuma renovação por mais que isto exige novo login. |
 | `IDENTA_INVITE_HOURS` | `72` | não | sim | Validade do convite. |
 | `IDENTA_RESET_MINUTES` | `60` | não | não | Validade do link de redefinição de senha. |
 | `IDENTA_VERIFY_HOURS` | `48` | não | não | Validade do link de confirmação de e-mail. |
 | `IDENTA_SCAN_LINK_HOURS` | `48` | não | sim | Validade padrão do link de envio remoto. |
 | `IDENTA_SECURE_COOKIES` | `false` | não | não | Marca os cookies como `Secure`. Ligue quando houver HTTPS. |
+| `IDENTA_PRODUCTION` | `false` | não | não | Modo produção. A API recusa subir sem `IDENTA_SECURE_COOKIES=true`, `IDENTA_PUBLIC_URL` com `https://`, criptografia ligada e, com SMTP, `IDENTA_SMTP_SECURITY` diferente de `none`. Ligue em toda instalação exposta na internet. |
 
 ## Instância e interface
 
@@ -114,5 +121,28 @@ A API confere a permissão em cada rota; a interface só esconde o que o papel n
 | --- | --- | --- |
 | `IDENTA_BIND` | `127.0.0.1` | Interface de rede em que a porta da interface é publicada. `0.0.0.0` libera para a rede local. |
 | `IDENTA_PORT` | `8090` | Porta da interface no host. A API, o PostgreSQL e o Mailpit não são publicados, exceto o painel do Mailpit em `127.0.0.1`. |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | `identa`, `identa`, — | Banco criado no primeiro `up`. A senha é obrigatória. |
+| `POSTGRES_DB`, `POSTGRES_USER` | `identa`, `identa` | Banco e dono criados no primeiro `up`. A senha do dono fica em `secrets/postgres_password`. |
+| `POSTGRES_APP_USER` | `identa_app` | Usuário sem privilégios com que a API acessa o banco. Senha em `secrets/database_app_password`. |
+| `IDENTA_API_MEMORY_LIMIT`, `IDENTA_WEB_MEMORY_LIMIT`, `POSTGRES_MEMORY_LIMIT` | `3g`, `512m`, `1g` | Limite de memória de cada container. |
 | `MAILPIT_PORT` | `8025` | Porta do painel do Mailpit. |
+
+### Segredos
+
+O Compose não lê segredos do `.env`. Eles ficam em arquivos na pasta `secrets/`, montados só nos containers que precisam deles, em `/run/secrets`:
+
+| Arquivo | Usado por | Conteúdo |
+| --- | --- | --- |
+| `postgres_password` | postgres, migrate | Senha do dono do banco. Só o serviço `migrate` a usa, para aplicar as migrações. |
+| `database_app_password` | migrate, api | Senha do usuário `POSTGRES_APP_USER`, com que a API roda. |
+| `secret_key` | migrate, api | `IDENTA_SECRET_KEY`. |
+| `encryption_key` | migrate, api | `IDENTA_ENCRYPTION_KEY`. |
+| `backup_passphrase` | `scripts/backup.sh` | Senha que cifra os backups. Não é montada em nenhum container. |
+
+`scripts/gerar-segredos.sh` (ou `scripts\gerar-segredos.ps1` no Windows) cria os arquivos que faltam. Se o `.env` já tiver `POSTGRES_PASSWORD`, `IDENTA_SECRET_KEY` ou `IDENTA_ENCRYPTION_KEY`, o valor é copiado, então uma instalação existente continua lendo os mesmos dados; depois apague esses valores do `.env`. Arquivo que já existe nunca é sobrescrito.
+
+A cada `up`, o serviço `migrate` aplica as migrações com o dono do banco, cria ou atualiza o usuário da aplicação e termina. A API só sobe depois dele. O usuário da aplicação lê e grava as tabelas, mas não altera o esquema, não apaga nem muda a auditoria e não mexe na versão das migrações.
+
+### Isolamento dos containers
+
+Todos os serviços rodam com o sistema de arquivos somente leitura (gravação só no volume de dados e em `/tmp` na memória), sem capacidades do Linux (o PostgreSQL mantém só as que precisa para trocar de usuário ao iniciar), com `no-new-privileges` e com limite de memória e de processos.
+

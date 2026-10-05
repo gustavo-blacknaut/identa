@@ -1,9 +1,11 @@
+import hashlib
 import re
 
 import pyotp
 import pytest
 from fastapi.testclient import TestClient
 
+from identa.auth import totp
 from identa.auth.routes import REFRESH_COOKIE
 from identa.mail.sender import Mailer, OutgoingMail
 from tests.conftest import CSRF_HEADERS, EMAIL, PASSWORD, add_user, login
@@ -228,3 +230,28 @@ def test_account_events_are_audited(client, mailbox):
     client.post("/api/auth/password", json={"current_password": PASSWORD, "new_password": NEW_PASSWORD})
     actions = {item["action"] for item in client.get("/api/audit", params={"page_size": 100}).json()["items"]}
     assert {"login", "invite", "password_change"} <= actions
+
+
+def test_audit_details_carry_no_e_mail_addresses(client, mailbox):
+    login(client)
+    client.post("/api/users/invitations", json={"email": "convidada@exemplo.com"})
+    client.post("/api/auth/login", json={"email": "estranho@exemplo.com", "password": "x"})
+    client.post("/api/auth/email", json={"email": "novo@exemplo.com", "password": PASSWORD})
+    client.post("/api/scan-links", json={"label": "Maria Souza, admissão"})
+    entries = client.get("/api/audit", params={"page_size": 100}).json()["items"]
+    texts = " ".join(str(entry["details"]) for entry in entries)
+    assert "@" not in texts
+    assert "Maria" not in texts
+
+
+def test_recovery_codes_are_keyed_hashes():
+    stored = totp.hash_recovery_code("chave-do-servidor-" * 2, "abcde-12345")
+    assert stored.startswith("hmac:")
+    assert stored != totp.hash_recovery_code("outra-chave-do-servidor-" * 2, "abcde-12345")
+    assert totp.find_recovery_code([stored], "chave-do-servidor-" * 2, "ABCDE12345") == stored
+    assert totp.find_recovery_code([stored], "outra-chave-do-servidor-" * 2, "abcde-12345") is None
+
+
+def test_recovery_codes_saved_before_keyed_hashes_still_work():
+    legacy = hashlib.sha256(b"abcde12345").hexdigest()
+    assert totp.find_recovery_code([legacy], "chave-do-servidor-" * 2, "abcde-12345") == legacy

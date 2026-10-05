@@ -47,6 +47,7 @@ OPTIONS = (
     Option("login_max_attempts", "int", 1, 100),
     Option("login_lock_minutes", "int", 1, 1440),
     Option("refresh_days", "int", 1, 365),
+    Option("session_idle_hours", "int", 1, 720),
     Option("invite_hours", "int", 1, 720),
     Option("scan_link_hours", "int", 1, 720),
 )

@@ -47,11 +47,15 @@ cd identa
 cp .env.example .env
 ```
 
-No `.env`, defina primeiro `POSTGRES_PASSWORD` com uma senha longa; o Compose recusa qualquer comando sem ela. Depois gere as duas chaves, rodando o comando duas vezes, e cole uma em `IDENTA_SECRET_KEY` e outra em `IDENTA_ENCRYPTION_KEY`:
+Gere as senhas do banco e as chaves. Elas ficam em arquivos na pasta `secrets/`, fora do `.env` e fora do Git:
 
 ```bash
-docker compose run --rm --no-deps api python -m identa.cli generate-key
+sh scripts/gerar-segredos.sh
 ```
+
+No Windows: `powershell -ExecutionPolicy Bypass -File scripts\gerar-segredos.ps1`. Guarde uma cópia de `secrets/encryption_key` fora do servidor: sem ela as imagens e os dados cifrados não podem ser lidos.
+
+Quem já tinha uma instalação com as chaves no `.env` roda o mesmo script: ele copia os valores existentes para `secrets/`. Depois apague `POSTGRES_PASSWORD`, `IDENTA_SECRET_KEY` e `IDENTA_ENCRYPTION_KEY` do `.env`.
 
 Depois:
 
@@ -61,7 +65,7 @@ docker compose up -d --build
 
 Abra `http://127.0.0.1:8090`. Na primeira visita aparece a configuração inicial, que cria o administrador. Os demais usuários entram por convite em *Usuários*.
 
-Só a interface é publicada no host. Para acessar de outros aparelhos da rede, use `IDENTA_BIND=0.0.0.0`. Para expor na internet, coloque um proxy com HTTPS na frente e ligue `IDENTA_SECURE_COOKIES=true`.
+Só a interface é publicada no host. Para acessar de outros aparelhos da rede, use `IDENTA_BIND=0.0.0.0`. Para expor na internet, coloque um proxy com HTTPS na frente e ligue `IDENTA_PRODUCTION=true`, `IDENTA_SECURE_COOKIES=true` e `IDENTA_PUBLIC_URL` com o endereço `https://`. Com `IDENTA_PRODUCTION=true` a API se recusa a subir se faltar algum desses itens.
 
 E-mail em desenvolvimento: `docker compose --profile dev up -d mailpit` e, no `.env`, `IDENTA_SMTP_HOST=mailpit`, `IDENTA_SMTP_PORT=1025`, `IDENTA_SMTP_SECURITY=none`, `IDENTA_SMTP_FROM=identa@exemplo.com.br`. As mensagens aparecem em `http://127.0.0.1:8025`. Sem SMTP, convites e links de redefinição aparecem na tela para o administrador copiar.
 
@@ -103,7 +107,7 @@ cd apps\api
 mkdir data
 python -m identa.cli download-models
 alembic upgrade head
-uvicorn identa.main:create_app --factory --host 127.0.0.1 --port 8000
+uvicorn identa.main:create_app --factory --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
 E em outro:
@@ -133,21 +137,27 @@ Suporte a GPU: AMD, Intel e NVIDIA via DirectML no Windows (só a AMD acima foi 
 
 ## Backup e restauração
 
-O que precisa de backup: o banco, o volume `storage` (imagens) e a `IDENTA_ENCRYPTION_KEY`. Sem a chave as imagens do backup são ilegíveis.
+O que precisa de backup: o banco, as imagens (pasta `storage`) e a pasta `secrets/`. Os scripts abaixo cuidam dos dois primeiros; guarde `secrets/` à parte, fora do servidor, porque sem `secrets/encryption_key` as imagens e os dados cifrados são ilegíveis e sem `secrets/backup_passphrase` o backup não abre.
 
 ```bash
-docker compose exec -T postgres pg_dump -U identa -Fc identa > identa.dump
-docker run --rm -v identa_storage:/data -v "$PWD":/backup alpine:3.24 tar czf /backup/storage.tar.gz -C /data .
+sh scripts/backup.sh
 ```
 
-Restaurar num servidor novo, com o mesmo `.env`:
+Gera `backups/identa-AAAAMMDDTHHMMSSZ.tar.gz.gpg`: dump do PostgreSQL e cópia das imagens, com somas SHA-256, cifrados com AES-256 (GnuPG, senha em `secrets/backup_passphrase`). Pode receber outra pasta de destino como argumento. Para agendar, uma linha no cron basta, por exemplo `15 3 * * * cd /opt/identa && sh scripts/backup.sh`; copie os arquivos para fora do servidor.
+
+Conferir um backup sem tocar na instalação (restaura num PostgreSQL temporário, confere as somas e mostra as contagens):
 
 ```bash
-docker compose up -d postgres
-docker compose exec -T postgres pg_restore -U identa -d identa --clean --if-exists < identa.dump
-docker run --rm -v identa_storage:/data -v "$PWD":/backup alpine:3.24 sh -c "tar xzf /backup/storage.tar.gz -C /data && chown -R 10001 /data"
-docker compose up -d
+sh scripts/restaurar-backup.sh backups/identa-20261005T031500Z.tar.gz.gpg --verificar
 ```
+
+Restaurar de verdade, substituindo o banco e as imagens (num servidor novo, primeiro copie o `.env` e a pasta `secrets/`):
+
+```bash
+sh scripts/restaurar-backup.sh backups/identa-20261005T031500Z.tar.gz.gpg --confirmar
+```
+
+O script para a API e a interface, restaura o banco e as imagens e sobe tudo de novo; o serviço `migrate` reaplica as migrações e as permissões do usuário da aplicação. Requisitos no host: Docker, `gpg`, `tar` e `sha256sum`.
 
 Migrar uma instalação SQLite para PostgreSQL:
 
@@ -155,7 +165,7 @@ Migrar uma instalação SQLite para PostgreSQL:
 docker compose run --rm --no-deps -v "$PWD/data:/import" api python -m identa.cli sqlite-to-postgres --source sqlite:////import/identa.db --target "postgresql://identa:SENHA@postgres:5432/identa"
 ```
 
-O comando exige o PostgreSQL vazio, copia todas as tabelas, ajusta as sequências e confere as contagens. As imagens não mudam de lugar; copie o diretório de armazenamento para o volume.
+O comando exige o PostgreSQL vazio, copia todas as tabelas, ajusta as sequências e confere as contagens. As imagens não mudam de lugar; copie o diretório de armazenamento para a pasta `storage`.
 
 ## Testes
 
@@ -172,6 +182,8 @@ cd apps/web && npx playwright install chromium && npx playwright test --project=
 ```
 
 O Playwright sobe a API com dados fictícios e um build de produção da interface. O teste de responsividade falha se qualquer rota tiver rolagem horizontal em 360, 375, 768, 1024, 1280 e 1920 px, e em 640 px (1280 com zoom de 200%), ou se um alvo de toque tiver menos de 44 px em telas pequenas. `SCREENSHOTS=1 npx playwright test --project=setup --project=screenshots` regenera as capturas desta página; `python scripts/flow_gif.py` monta o GIF.
+
+O CI também roda, a cada push e toda segunda-feira, gitleaks no histórico do Git, Trivy nas dependências, nos Dockerfiles e nas imagens, e CodeQL no Python e no TypeScript. Para barrar segredos antes do commit, instale o [pre-commit](https://pre-commit.com) e rode `pre-commit install`; o gancho do gitleaks já está em `.pre-commit-config.yaml`.
 
 ## Limitações
 

@@ -437,6 +437,7 @@ export default function SettingsPage() {
             { key: "login_max_attempts", label: t.settings.loginAttempts, kind: "number", min: 1, max: 100 },
             { key: "login_lock_minutes", label: t.settings.lockMinutes, kind: "number", min: 1, max: 1440 },
             { key: "refresh_days", label: t.settings.refreshDays, kind: "number", min: 1, max: 365 },
+            { key: "session_idle_hours", label: t.settings.idleHours, kind: "number", min: 1, max: 720 },
             { key: "invite_hours", label: t.settings.inviteHours, kind: "number", min: 1, max: 720 },
             { key: "scan_link_hours", label: t.settings.scanLinkHours, kind: "number", min: 1, max: 720 },
             { key: "password_require_mixed", label: t.settings.passwordMixed, kind: "boolean" },

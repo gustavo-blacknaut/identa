@@ -2,10 +2,12 @@ import logging
 import threading
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from identa import __version__
+from identa.auth.passwords import configure_hashing
 from identa.auth.routes import PUBLIC_API_PATHS, setup_router, users_router
 from identa.auth.routes import router as auth_router
 from identa.auth.throttle import LoginThrottle
@@ -13,11 +15,12 @@ from identa.config import Settings, get_settings
 from identa.db.session import build_engine, build_session_factory
 from identa.mail.sender import Mailer
 from identa.ocr.factory import get_ocr_engine
-from identa.security.crypto import FileCipher
+from identa.security.fields import configure_fields
 from identa.services.audit import current_ip
 from identa.services.retention import start_retention_worker
 from identa.services.settings import load_runtime
 from identa.storage.file_store import FileStore
+from identa.web.limits import BodySizeLimit
 from identa.web.routes import public_router, router
 
 CSRF_HEADER = "x-requested-with"
@@ -36,6 +39,14 @@ def configure_logging() -> None:
         logger.setLevel(logging.INFO)
 
 
+def validation_problems(error: RequestValidationError) -> list[dict]:
+    return [{"loc": list(item["loc"]), "msg": item["msg"], "type": item["type"]} for item in error.errors()]
+
+
+async def reject_invalid_request(_request: Request, error: RequestValidationError) -> JSONResponse:
+    return JSONResponse({"detail": validation_problems(error)}, status_code=422)
+
+
 def warm_up_ocr(application: FastAPI) -> None:
     settings = application.state.settings
     try:
@@ -49,13 +60,16 @@ def warm_up_ocr(application: FastAPI) -> None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging()
-    cipher = FileCipher(settings.encryption_key) if settings.encryption_enabled else None
+    ring = settings.key_ring()
+    configure_fields(ring, settings.secret_key)
+    configure_hashing(settings.argon2_time_cost, settings.argon2_memory_kib, settings.argon2_parallelism)
     application = FastAPI(title="Identa", version=__version__, docs_url=None, redoc_url=None, openapi_url=None)
     application.state.settings = settings
     application.state.session_factory = build_session_factory(build_engine(settings.database_url))
-    application.state.store = FileStore(settings.storage_dir, cipher)
+    application.state.store = FileStore(settings.storage_dir, ring)
     application.state.login_throttle = LoginThrottle(max_attempts=IP_ATTEMPTS)
     application.state.mailer = Mailer(settings)
+    application.add_exception_handler(RequestValidationError, reject_invalid_request)
     application.include_router(setup_router)
     application.include_router(auth_router)
     application.include_router(users_router)
@@ -96,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         same_site="strict",
         https_only=settings.secure_cookies,
     )
+    application.add_middleware(BodySizeLimit)
     return application
 
 

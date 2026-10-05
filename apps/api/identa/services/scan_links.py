@@ -59,7 +59,7 @@ def create_link(session: Session, user_id: int | None, label: str | None, hours:
     )
     session.add(link)
     session.flush()
-    record(session, user_id, "create", "scan_link", link.id, link.label)
+    record(session, user_id, "create", "scan_link", link.id)
     session.commit()
     return CreatedLink(link, raw_token)
 

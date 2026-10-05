@@ -78,18 +78,25 @@ export const api = {
   cancelInvitation: (id: number) =>
     unwrap(client.DELETE("/api/users/invitations/{invitation_id}", { params: { path: { invitation_id: id } } })),
   people: (query: ListQuery) => unwrap(client.GET("/api/people", { params: { query } })) as Promise<Page<Person>>,
-  person: (id: number) => unwrap(client.GET("/api/people/{person_id}", { params: { path: { person_id: id } } })),
-  updatePerson: (id: number, values: Record<string, string | null>) =>
-    unwrap(client.PUT("/api/people/{person_id}", { params: { path: { person_id: id } }, body: { values } })),
-  verifyPerson: (id: number) => unwrap(client.POST("/api/people/{person_id}/verify", { params: { path: { person_id: id } } })),
+  person: (id: number, reveal = false) =>
+    unwrap(client.GET("/api/people/{person_id}", { params: { path: { person_id: id }, query: { reveal } } })),
+  updatePerson: (id: number, values: Record<string, string | null>, reveal = false) =>
+    unwrap(client.PUT("/api/people/{person_id}", { params: { path: { person_id: id }, query: { reveal } }, body: { values } })),
+  verifyPerson: (id: number, reveal = false) =>
+    unwrap(client.POST("/api/people/{person_id}/verify", { params: { path: { person_id: id }, query: { reveal } } })),
+  exportPerson: (id: number) =>
+    unwrap(client.GET("/api/people/{person_id}/export", { params: { path: { person_id: id } }, parseAs: "blob" })),
   deletePerson: (id: number) => unwrap(client.DELETE("/api/people/{person_id}", { params: { path: { person_id: id } } })),
   documents: (query: ListQuery) =>
     unwrap(client.GET("/api/documents", { params: { query } })) as Promise<Page<DocumentSummary>>,
-  document: (id: number) => unwrap(client.GET("/api/documents/{document_id}", { params: { path: { document_id: id } } })),
-  saveDocument: (id: number, values: Record<string, string>) =>
-    unwrap(client.PUT("/api/documents/{document_id}", { params: { path: { document_id: id } }, body: { values } })),
-  reprocess: (id: number) =>
-    unwrap(client.POST("/api/documents/{document_id}/reprocess", { params: { path: { document_id: id } } })),
+  document: (id: number, reveal = false) =>
+    unwrap(client.GET("/api/documents/{document_id}", { params: { path: { document_id: id }, query: { reveal } } })),
+  saveDocument: (id: number, values: Record<string, string>, reveal = false) =>
+    unwrap(
+      client.PUT("/api/documents/{document_id}", { params: { path: { document_id: id }, query: { reveal } }, body: { values } }),
+    ),
+  reprocess: (id: number, reveal = false) =>
+    unwrap(client.POST("/api/documents/{document_id}/reprocess", { params: { path: { document_id: id }, query: { reveal } } })),
   deleteDocument: (id: number) => unwrap(client.DELETE("/api/documents/{document_id}", { params: { path: { document_id: id } } })),
   upload: (form: FormData) => sendForm<DocumentDetail>("/api/documents", form),
   audit: (query: ListQuery) => unwrap(client.GET("/api/audit", { params: { query } })) as Promise<Page<AuditEntry>>,

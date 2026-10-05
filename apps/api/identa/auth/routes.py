@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -50,7 +50,7 @@ from identa.auth.tokens import (
 )
 from identa.db.models import RefreshToken, TokenPurpose, User, UserToken
 from identa.mail.messages import compose
-from identa.mail.sender import MailError
+from identa.mail.sender import MailError, OutgoingMail
 from identa.services.audit import record
 from identa.services.settings import RuntimeSettings
 from identa.web.deps import RuntimeDep, SessionDep, UserDep, require
@@ -72,6 +72,7 @@ PUBLIC_API_PATHS = (
     "/api/setup",
     "/health",
 )
+LOGIN_FAILED = "E-mail ou senha inválidos. Depois de várias tentativas seguidas a conta fica bloqueada por alguns minutos."
 REFRESH_COOKIE = "identa_refresh"
 REFRESH_PATH = "/"
 TWO_FACTOR_SECONDS = 300
@@ -100,18 +101,32 @@ def format_moment(moment: datetime, runtime: RuntimeSettings) -> str:
     return aware.astimezone(ZoneInfo(runtime.timezone)).strftime("%d/%m/%Y %H:%M")
 
 
-def deliver(
+def outgoing(
     request: Request, runtime: RuntimeSettings, kind: str, to: str, link: str, expires_at: datetime, **values: str
-) -> bool:
-    mailer = request.app.state.mailer
-    if not mailer.configured:
-        return False
-    mail = compose(
+) -> OutgoingMail | None:
+    if not request.app.state.mailer.configured:
+        return None
+    return compose(
         kind, runtime.default_language, to, link, instance=runtime.instance_name,
         expires=format_moment(expires_at, runtime), **values,
     )
+
+
+def send_quietly(mailer, mail: OutgoingMail, sender: str) -> None:
     try:
-        mailer.send(mail, runtime.instance_name)
+        mailer.send(mail, sender)
+    except MailError:
+        return
+
+
+def deliver(
+    request: Request, runtime: RuntimeSettings, kind: str, to: str, link: str, expires_at: datetime, **values: str
+) -> bool:
+    mail = outgoing(request, runtime, kind, to, link, expires_at, **values)
+    if mail is None:
+        return False
+    try:
+        request.app.state.mailer.send(mail, runtime.instance_name)
     except MailError:
         return False
     return True
@@ -172,17 +187,11 @@ def login(request: Request, response: Response, credentials: LoginIn, session: S
     throttle = request.app.state.login_throttle
     key = guard_ip(request, "login")
     outcome = accounts.authenticate(session, credentials.email, credentials.password, runtime)
-    if outcome.status == "locked":
-        session.commit()
-        until = format_moment(outcome.locked_until, runtime) if outcome.locked_until else ""
-        raise HTTPException(423, f"Conta bloqueada temporariamente por excesso de tentativas. Tente após {until}.")
     if outcome.user is None:
         throttle.record_failure(key)
-        record(session, None, "login_failed", "user", None, f"e-mail informado: {credentials.email[:80]}")
+        record(session, None, "login_failed", "user", outcome.account_id, outcome.status)
         session.commit()
-        if outcome.status == "disabled":
-            raise HTTPException(403, "Esta conta está desativada. Fale com um administrador.")
-        raise HTTPException(401, "E-mail ou senha inválidos.")
+        raise HTTPException(401, LOGIN_FAILED)
     user = outcome.user
     if user.two_factor_enabled:
         session.commit()
@@ -226,7 +235,14 @@ def login_two_factor(
 def refresh(request: Request, response: Response, session: SessionDep, runtime: RuntimeDep) -> UserOut:
     raw_token = request.cookies.get(REFRESH_COOKIE)
     rotated = (
-        rotate_refresh_token(session, raw_token, runtime.refresh_days, request.headers.get("user-agent"), client_ip(request))
+        rotate_refresh_token(
+            session,
+            raw_token,
+            runtime.refresh_days,
+            runtime.session_idle_hours,
+            request.headers.get("user-agent"),
+            client_ip(request),
+        )
         if raw_token
         else None
     )
@@ -264,7 +280,9 @@ def logout(request: Request, session: SessionDep) -> Response:
 
 
 @router.post("/password/forgot", status_code=202)
-def forgot_password(request: Request, payload: ForgotIn, session: SessionDep, runtime: RuntimeDep) -> dict[str, str]:
+def forgot_password(
+    request: Request, payload: ForgotIn, session: SessionDep, runtime: RuntimeDep, background: BackgroundTasks
+) -> dict[str, str]:
     key = guard_ip(request, "forgot")
     request.app.state.login_throttle.record_failure(key)
     settings = request.app.state.settings
@@ -272,7 +290,9 @@ def forgot_password(request: Request, payload: ForgotIn, session: SessionDep, ru
     if issued is not None:
         user, raw = issued
         token = session.scalar(select(UserToken).where(UserToken.token_hash == hash_token(raw)))
-        deliver(request, runtime, "reset", user.email, f"{public_base(request)}{RESET_PATH}{raw}", token.expires_at)
+        mail = outgoing(request, runtime, "reset", user.email, f"{public_base(request)}{RESET_PATH}{raw}", token.expires_at)
+        if mail is not None:
+            background.add_task(send_quietly, request.app.state.mailer, mail, runtime.instance_name)
     session.commit()
     return {"detail": "Se o e-mail estiver cadastrado, enviaremos um link para redefinir a senha."}
 
@@ -291,10 +311,12 @@ def reset_password(request: Request, payload: ResetIn, session: SessionDep, runt
 
 
 @router.get("/invitations/{token}")
-def preview_invitation(token: str, session: SessionDep) -> InvitationPreview:
+def preview_invitation(request: Request, token: str, session: SessionDep) -> InvitationPreview:
+    key = guard_ip(request, "invite")
     try:
         invitation = accounts.invitation(session, token)
     except InvalidTokenError as error:
+        request.app.state.login_throttle.record_failure(key)
         raise HTTPException(404, str(error)) from error
     return InvitationPreview(email=invitation.email, role=invitation.role or "reader", expires_at=invitation.expires_at)
 
@@ -303,22 +325,25 @@ def preview_invitation(token: str, session: SessionDep) -> InvitationPreview:
 def accept_invitation(
     request: Request, response: Response, token: str, payload: AcceptInviteIn, session: SessionDep, runtime: RuntimeDep
 ) -> UserOut:
-    guard_ip(request, "invite")
+    key = guard_ip(request, "invite")
     try:
         user = accounts.accept_invite(session, token, payload.name, payload.password, runtime)
     except (InvalidTokenError, AccountError, WeakPasswordError) as error:
         session.commit()
+        if isinstance(error, InvalidTokenError):
+            request.app.state.login_throttle.record_failure(key)
         raise HTTPException(400, str(error)) from error
     return start_session(request, response, session, user, runtime)
 
 
 @router.post("/email/verify")
 def verify_email(request: Request, payload: TokenIn, session: SessionDep, runtime: RuntimeDep) -> dict[str, str]:
-    guard_ip(request, "verify")
+    key = guard_ip(request, "verify")
     try:
         user = accounts.confirm_email(session, payload.token)
     except (InvalidTokenError, AccountError) as error:
         session.commit()
+        request.app.state.login_throttle.record_failure(key)
         raise HTTPException(400, str(error)) from error
     session.commit()
     return {"detail": f"E-mail {user.email} confirmado."}
@@ -541,7 +566,7 @@ def account_revoke_sessions(user_id: int, admin: AdminDep, session: SessionDep) 
     user = load_account(session, user_id)
     count = len(active_sessions(session, user.id))
     revoke_all(session, user.id)
-    record(session, admin.id, "revoke", "session", None, f"{count} sessão(ões) de {user.email}")
+    record(session, admin.id, "revoke", "user", user.id, f"{count} sessão(ões)")
     session.commit()
     return {"revoked": count}
 

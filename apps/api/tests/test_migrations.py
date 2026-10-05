@@ -96,3 +96,40 @@ def test_usernames_become_e_mail_accounts(raw_engine):
         ("gustavo@identa.local", "gustavo", "admin"),
         ("ana@exemplo.com", "Ana@Exemplo.com", "reviewer"),
     ]
+
+
+def add_audit_entry(connection) -> int:
+    user_id = connection.execute(
+        text(
+            "INSERT INTO users (email, password_hash, role, name, is_active, created_at)"
+            " VALUES ('auditoria@exemplo.com', 'x', 'admin', 'Auditoria', true, CURRENT_TIMESTAMP) RETURNING id"
+        )
+    ).scalar_one()
+    connection.execute(
+        text(
+            "INSERT INTO audit_log (user_id, action, entity, entity_id, occurred_at)"
+            " VALUES (:user_id, 'login', 'user', :user_id, CURRENT_TIMESTAMP)"
+        ),
+        {"user_id": user_id},
+    )
+    return user_id
+
+
+@pytest.mark.parametrize(
+    "statement",
+    ["UPDATE audit_log SET action = 'logout'", "UPDATE audit_log SET user_id = NULL, details = 'x'", "DELETE FROM audit_log"],
+)
+def test_audit_log_rejects_changes(migrated_engine, statement):
+    with migrated_engine.begin() as connection:
+        add_audit_entry(connection)
+    with pytest.raises(Exception, match="append-only"), migrated_engine.begin() as connection:
+        connection.execute(text(statement))
+
+
+def test_deleting_a_user_keeps_the_audit_entries(migrated_engine):
+    with migrated_engine.begin() as connection:
+        user_id = add_audit_entry(connection)
+    with migrated_engine.begin() as connection:
+        connection.execute(text("DELETE FROM users WHERE id = :user_id"), {"user_id": user_id})
+    with migrated_engine.connect() as connection:
+        assert connection.execute(text("SELECT user_id, action FROM audit_log")).all() == [(None, "login")]

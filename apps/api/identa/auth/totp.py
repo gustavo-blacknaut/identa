@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import io
 import secrets
 
@@ -6,6 +7,8 @@ import pyotp
 import segno
 
 RECOVERY_CODE_COUNT = 8
+RECOVERY_HASH_PREFIX = "hmac:"
+RECOVERY_CONTEXT = b"identa-recovery-code:"
 VALID_WINDOW = 1
 
 
@@ -28,8 +31,25 @@ def verify_code(secret: str, code: str) -> bool:
     return len(digits) == 6 and pyotp.TOTP(secret).verify(digits, valid_window=VALID_WINDOW)
 
 
-def hash_recovery_code(code: str) -> str:
-    return hashlib.sha256(code.replace("-", "").strip().lower().encode()).hexdigest()
+def normalize_recovery_code(code: str) -> bytes:
+    return code.replace("-", "").strip().lower().encode()
+
+
+def hash_recovery_code(secret_key: str, code: str) -> str:
+    digest = hmac.new(secret_key.encode(), RECOVERY_CONTEXT + normalize_recovery_code(code), hashlib.sha256).hexdigest()
+    return RECOVERY_HASH_PREFIX + digest
+
+
+def legacy_recovery_hash(code: str) -> str:
+    return hashlib.sha256(normalize_recovery_code(code)).hexdigest()
+
+
+def find_recovery_code(stored: list[str], secret_key: str, code: str) -> str | None:
+    candidates = (hash_recovery_code(secret_key, code), legacy_recovery_hash(code))
+    for item in stored:
+        if any(hmac.compare_digest(item, candidate) for candidate in candidates):
+            return item
+    return None
 
 
 def new_recovery_codes() -> list[str]:

@@ -8,6 +8,8 @@ from identa.db.base import utc_now
 from identa.db.models import Document, DocumentStatus, Person
 from identa.parsers.base import strip_accents
 from identa.parsers.registry import get_parser
+from identa.security.fields import blind_index
+from identa.security.masking import is_sensitive
 from identa.services.audit import record
 from identa.services.documents import document_values
 from identa.validators.cpf import is_valid_cpf, only_digits
@@ -36,6 +38,7 @@ class OtherDataItem:
     value: str
     doc_type: str
     document_id: int
+    sensitive: bool = False
 
 
 @dataclass(frozen=True)
@@ -70,7 +73,7 @@ def update_person(session: Session, person: Person, values: dict[str, str | None
         if digits and not is_valid_cpf(digits):
             raise PersonUpdateError("CPF inválido: o dígito verificador não confere.")
         if digits and digits != person.cpf:
-            owner = session.scalar(select(Person).where(Person.cpf == digits, Person.id != person.id))
+            owner = session.scalar(select(Person).where(Person.cpf_index == blind_index(digits), Person.id != person.id))
             if owner is not None:
                 raise PersonUpdateError("Este CPF já pertence a outra pessoa do cadastro.")
         if digits != person.cpf:
@@ -150,5 +153,6 @@ def other_data(person: Person) -> list[OtherDataItem]:
             if not value or key in seen:
                 continue
             seen.add(key)
-            items.append(OtherDataItem(definition.label, value, document.doc_type, document.id))
+            sensitive = is_sensitive(definition.name, definition.kind)
+            items.append(OtherDataItem(definition.label, value, document.doc_type, document.id, sensitive))
     return items

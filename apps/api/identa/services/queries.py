@@ -6,6 +6,7 @@ from sqlalchemy import Select, and_, case, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from identa.db.models import AuditLog, Document, DocumentStatus, Person, User
+from identa.security.fields import blind_index
 from identa.validators.cpf import only_digits
 
 MAX_PAGE_SIZE = 100
@@ -54,14 +55,17 @@ def end_of(day: date, timezone: str = DEFAULT_TIMEZONE) -> datetime:
     return datetime.combine(day + timedelta(days=1), time.min, tzinfo=ZoneInfo(timezone))
 
 
-def text_condition(filters: ListFilters, name_column, cpf_column):
+CPF_LENGTH = 11
+
+
+def text_condition(filters: ListFilters, name_column, cpf_index_column):
     term = filters.query.strip()
     if not term:
         return None
     conditions = [name_column.ilike(f"%{term}%")]
     digits = only_digits(term)
-    if digits and not any(char.isalpha() for char in term):
-        conditions.append(cpf_column.like(f"%{digits}%"))
+    if len(digits) == CPF_LENGTH and not any(char.isalpha() for char in term):
+        conditions.append(cpf_index_column == blind_index(digits))
     return or_(*conditions)
 
 
@@ -91,7 +95,7 @@ def pending_documents_of_person():
 def list_people(session: Session, filters: ListFilters, timezone: str = DEFAULT_TIMEZONE) -> Page[Person]:
     statement = select(Person).options(selectinload(Person.documents).selectinload(Document.images))
     conditions = date_conditions(filters, Person.created_at, timezone)
-    if (condition := text_condition(filters, Person.full_name, Person.cpf)) is not None:
+    if (condition := text_condition(filters, Person.full_name, Person.cpf_index)) is not None:
         conditions.append(condition)
     if filters.doc_type:
         conditions.append(exists().where(Document.person_id == Person.id, Document.doc_type == filters.doc_type))
@@ -114,7 +118,7 @@ def list_people(session: Session, filters: ListFilters, timezone: str = DEFAULT_
 def list_documents(session: Session, filters: ListFilters, timezone: str = DEFAULT_TIMEZONE) -> Page[Document]:
     statement = select(Document).options(selectinload(Document.images))
     conditions = date_conditions(filters, Document.processed_at, timezone)
-    if (condition := text_condition(filters, Document.full_name, Document.cpf)) is not None:
+    if (condition := text_condition(filters, Document.full_name, Document.cpf_index)) is not None:
         conditions.append(condition)
     if filters.doc_type:
         conditions.append(Document.doc_type == filters.doc_type)

@@ -1,7 +1,16 @@
 import pytest
+from sqlalchemy import select
 
-from identa.auth.passwords import WeakPasswordError, check_password_policy, hash_password, verify_password
+from identa.auth.passwords import (
+    WeakPasswordError,
+    check_password_policy,
+    configure_hashing,
+    hash_password,
+    needs_rehash,
+    verify_password,
+)
 from identa.auth.throttle import LoginThrottle
+from identa.db.models import User
 from tests.conftest import EMAIL, PASSWORD, add_user, login
 
 
@@ -15,7 +24,12 @@ def test_password_hash_round_trip():
 
 @pytest.mark.parametrize(
     ("password", "message"),
-    [("curta1", "pelo menos"), ("somenteletrasaqui", "misturar"), ("maria.souza-2024", "e-mail")],
+    [
+        ("curta1", "pelo menos"),
+        ("somenteletrasaqui", "misturar"),
+        ("maria.souza-2024", "e-mail"),
+        ("1Q2W3E4R5T", "vazadas"),
+    ],
 )
 def test_password_policy(password, message):
     with pytest.raises(WeakPasswordError, match=message):
@@ -64,6 +78,13 @@ def test_wrong_password_is_rejected(client):
     assert "inválidos" in response.json()["detail"]
 
 
+def test_login_does_not_reveal_whether_the_account_exists(client):
+    known = client.post("/api/auth/login", json={"email": EMAIL, "password": "senha-errada"})
+    unknown = client.post("/api/auth/login", json={"email": "ninguem@exemplo.com", "password": "senha-errada"})
+    assert known.status_code == unknown.status_code == 401
+    assert known.json() == unknown.json()
+
+
 def test_email_is_case_insensitive(client):
     response = client.post("/api/auth/login", json={"email": EMAIL.upper(), "password": PASSWORD})
     assert response.json()["user"]["email"] == EMAIL
@@ -85,8 +106,10 @@ def test_account_is_locked_after_repeated_failures(client):
     for _ in range(4):
         assert client.post("/api/auth/login", json={"email": EMAIL, "password": "errada"}).status_code == 401
     locked = client.post("/api/auth/login", json={"email": EMAIL, "password": "errada"})
-    assert locked.status_code == 423
-    assert client.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD}).status_code == 423
+    assert locked.status_code == 401
+    blocked = client.post("/api/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    assert blocked.status_code == 401
+    assert blocked.json() == locked.json()
     add_user(client.app, "auditora@exemplo.com.br")
     login(client, "auditora@exemplo.com.br")
     actions = {item["action"] for item in client.get("/api/audit").json()["items"]}
@@ -126,4 +149,40 @@ def test_disabled_account_cannot_log_in(client):
     assert client.patch(f"/api/users/{user_id}", json={"is_active": False}).status_code == 200
     client.post("/api/auth/logout")
     response = client.post("/api/auth/login", json={"email": "leitora@exemplo.com.br", "password": PASSWORD})
-    assert response.status_code == 403
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "payload"),
+    [
+        ("get", "/api/public/scan/{token}", None),
+        ("post", "/api/auth/email/verify", {"token": "{token}"}),
+        ("post", "/api/auth/invitations/{token}/accept", {"name": "Pessoa", "password": "senha-boa-12345"}),
+    ],
+)
+def test_token_guessing_is_throttled(client, method, path, payload):
+    def attempt(index: int):
+        token = f"token-invalido-{index}"
+        body = {key: value.format(token=token) for key, value in payload.items()} if payload else None
+        return client.request(method.upper(), path.format(token=token), json=body)
+
+    statuses = {attempt(index).status_code for index in range(20)}
+    assert 429 not in statuses
+    assert attempt(20).status_code == 429
+
+
+def test_login_upgrades_hashes_made_with_old_parameters(client):
+    configure_hashing(2, 19456, 1)
+    old_hash = hash_password(PASSWORD)
+    configure_hashing(3, 65536, 4)
+    assert "m=19456,t=2,p=1" in old_hash
+    assert needs_rehash(old_hash)
+    with client.app.state.session_factory() as session:
+        user = session.scalar(select(User).where(User.email == EMAIL))
+        user.password_hash = old_hash
+        session.commit()
+    login(client)
+    with client.app.state.session_factory() as session:
+        upgraded = session.scalar(select(User).where(User.email == EMAIL)).password_hash
+    assert "m=65536,t=3,p=4" in upgraded
+    assert verify_password(upgraded, PASSWORD)

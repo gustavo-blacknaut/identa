@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from identa.auth import totp
 from identa.auth.one_time import consume, find_active, issue_token, revoke_pending
-from identa.auth.passwords import check_password_policy, hash_password, verify_password
+from identa.auth.passwords import check_password_policy, hash_password, needs_rehash, verify_password
 from identa.auth.tokens import as_aware, revoke_all
 from identa.db.base import utc_now
 from identa.db.models import TokenPurpose, User, UserRole, UserToken
@@ -24,6 +24,7 @@ class LoginOutcome:
     user: User | None
     status: str
     locked_until: datetime | None = None
+    account_id: int | None = None
 
 
 def normalize_email(email: str) -> str:
@@ -87,7 +88,7 @@ def authenticate(session: Session, email: str, password: str, runtime: RuntimeSe
     user = session.scalar(select(User).where(User.email == normalize_email(email)))
     if user is not None and is_locked(user):
         verify_password(None, password)
-        return LoginOutcome(None, "locked", user.locked_until)
+        return LoginOutcome(None, "locked", user.locked_until, user.id)
     if not verify_password(user.password_hash if user else None, password):
         if user is not None:
             user.failed_logins = (user.failed_logins or 0) + 1
@@ -95,12 +96,14 @@ def authenticate(session: Session, email: str, password: str, runtime: RuntimeSe
                 user.failed_logins = 0
                 user.locked_until = utc_now() + timedelta(minutes=runtime.login_lock_minutes)
                 record(session, user.id, "lock", "user", user.id, f"bloqueado por {runtime.login_lock_minutes} min")
-                return LoginOutcome(None, "locked", user.locked_until)
-        return LoginOutcome(None, "invalid")
+                return LoginOutcome(None, "locked", user.locked_until, user.id)
+        return LoginOutcome(None, "invalid", account_id=user.id if user else None)
     if not user.is_active:
-        return LoginOutcome(None, "disabled")
+        return LoginOutcome(None, "disabled", account_id=user.id)
     user.failed_logins = 0
     user.locked_until = None
+    if needs_rehash(user.password_hash):
+        user.password_hash = hash_password(password)
     return LoginOutcome(user, "ok")
 
 
@@ -129,7 +132,7 @@ def invite(
     token, raw = issue_token(
         session, TokenPurpose.INVITE, email, timedelta(hours=runtime.invite_hours), role=role, created_by=inviter.id
     )
-    record(session, inviter.id, "invite", "user", None, f"{email} como {role}")
+    record(session, inviter.id, "invite", "invitation", token.id, f"papel {role}")
     return token, raw
 
 
@@ -154,7 +157,7 @@ def accept_invite(session: Session, raw_token: str, name: str, password: str, ru
 
 def revoke_invite(session: Session, token: UserToken, admin: User) -> None:
     token.revoked_at = utc_now()
-    record(session, admin.id, "invite_revoke", "user", None, token.email)
+    record(session, admin.id, "invite_revoke", "invitation", token.id)
 
 
 def request_reset(session: Session, email: str, runtime: RuntimeSettings, minutes: int) -> tuple[User, str] | None:
@@ -199,7 +202,7 @@ def request_email_change(session: Session, user: User, email: str, password: str
     if find_by_email(session, email) is not None:
         raise AccountError("Já existe uma conta com este e-mail.")
     user.pending_email = email
-    record(session, user.id, "email_change_request", "user", user.id, email)
+    record(session, user.id, "email_change_request", "user", user.id)
     return issue_verification(session, user, email, hours)
 
 
@@ -213,13 +216,12 @@ def confirm_email(session: Session, raw_token: str) -> User:
         if user.pending_email != token.email or find_by_email(session, token.email) is not None:
             consume(token)
             raise AccountError("Este pedido de troca de e-mail não é mais válido.")
-        previous = user.email
         user.email = token.email
         user.pending_email = None
-        record(session, user.id, "email_change", "user", user.id, f"{previous} para {user.email}")
+        record(session, user.id, "email_change", "user", user.id)
     user.email_verified_at = utc_now()
     consume(token)
-    record(session, user.id, "email_verify", "user", user.id, user.email)
+    record(session, user.id, "email_verify", "user", user.id)
     return user
 
 
@@ -238,7 +240,7 @@ def confirm_two_factor(session: Session, user: User, secret_key: str, code: str)
     if not totp.verify_code(unseal(secret_key, user.totp_secret), code):
         raise AccountError("Código incorreto. Confira o horário do celular e tente de novo.")
     codes = totp.new_recovery_codes()
-    user.recovery_codes = [totp.hash_recovery_code(item) for item in codes]
+    user.recovery_codes = [totp.hash_recovery_code(secret_key, item) for item in codes]
     user.totp_enabled_at = utc_now()
     record(session, user.id, "2fa_enable", "user", user.id)
     return codes
@@ -249,10 +251,10 @@ def check_second_factor(session: Session, user: User, secret_key: str, code: str
         return True
     if totp.verify_code(unseal(secret_key, user.totp_secret), code):
         return True
-    hashed = totp.hash_recovery_code(code)
     remaining = list(user.recovery_codes or [])
-    if hashed in remaining:
-        remaining.remove(hashed)
+    matched = totp.find_recovery_code(remaining, secret_key, code)
+    if matched is not None:
+        remaining.remove(matched)
         user.recovery_codes = remaining
         record(session, user.id, "2fa_recovery_code", "user", user.id, f"{len(remaining)} código(s) restante(s)")
         return True
@@ -265,8 +267,7 @@ def disable_two_factor(session: Session, user: User, password: str, actor: User 
     user.totp_secret = None
     user.totp_enabled_at = None
     user.recovery_codes = []
-    details = None if actor is None else f"desativado por {actor.email}"
-    record(session, (actor or user).id, "2fa_disable", "user", user.id, details)
+    record(session, (actor or user).id, "2fa_disable", "user", user.id)
 
 
 def update_user(session: Session, admin: User, user: User, role: str | None, is_active: bool | None) -> None:

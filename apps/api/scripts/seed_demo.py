@@ -8,7 +8,7 @@ from identa.config import get_settings
 from identa.db.models import Document, DocumentStatus, ImageSide, Person
 from identa.db.session import build_engine, build_session_factory
 from identa.ocr.base import OcrEngine
-from identa.security.crypto import FileCipher
+from identa.security.fields import configure_fields
 from identa.services.documents import UploadedSide, process_document
 from identa.storage.file_store import FileStore
 from identa.validators.cpf import calculate_check_digits
@@ -105,8 +105,8 @@ def main() -> None:
 
     settings = get_settings()
     factory = build_session_factory(build_engine(settings.database_url))
-    cipher = FileCipher(settings.encryption_key) if settings.encryption_enabled else None
-    store = FileStore(settings.storage_dir, cipher)
+    store = FileStore(settings.storage_dir, settings.key_ring())
+    configure_fields(settings.key_ring(), settings.secret_key)
     generator = random.Random(2026)
     seed_people(factory, arguments.people, generator)
     if arguments.scanned:

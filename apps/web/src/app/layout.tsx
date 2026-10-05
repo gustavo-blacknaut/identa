@@ -6,9 +6,11 @@ import "@fontsource/ibm-plex-sans/600.css";
 import "@/styles/tokens.css";
 import "@/styles/base.css";
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { Providers } from "@/components/Providers";
 import { loadInstance } from "@/lib/instance";
+import { NONCE_HEADER } from "@/lib/security-headers";
 import { isThemePreference, themeBootScript } from "@/lib/theme";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -33,10 +35,11 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const instance = await loadInstance();
   const theme = isThemePreference(instance.default_theme) ? instance.default_theme : "system";
+  const nonce = (await headers()).get(NONCE_HEADER) ?? undefined;
   return (
     <html lang={instance.default_language} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootScript(theme) }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeBootScript(theme) }} />
       </head>
       <body>
         <Providers instance={instance}>{children}</Providers>

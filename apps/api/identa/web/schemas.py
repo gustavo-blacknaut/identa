@@ -6,8 +6,10 @@ from pydantic import BaseModel
 from identa.db.models import Document, DocumentImage, DocumentStatus, ImageKind, Person
 from identa.parsers.base import DocumentParser
 from identa.parsers.registry import get_parser
+from identa.security.masking import is_sensitive, mask_number
 from identa.services.documents import document_values
 from identa.services.people import other_data
+from identa.validators.cpf import format_cpf
 
 PERSONAL_FIELDS = {"full_name", "birth_date", "birthplace", "mother_name", "father_name"}
 
@@ -58,6 +60,7 @@ class DocumentDetail(DocumentSummary):
     raw_text: str
     image_count: int
     person_id: int | None
+    masked: bool
 
 
 class ReviewIn(BaseModel):
@@ -89,6 +92,7 @@ class PersonOut(BaseModel):
 
 
 class PersonDetail(PersonOut):
+    masked: bool
     mother_name: str | None
     father_name: str | None
     birthplace: str | None
@@ -139,7 +143,7 @@ def document_summary(document: Document, parser: DocumentParser) -> DocumentSumm
         doc_type=document.doc_type,
         type_name=parser.display_name,
         full_name=document.full_name,
-        cpf=document.cpf,
+        cpf=mask_number(format_cpf(document.cpf) if document.cpf else None),
         status=document.status,
         confidence=document.ocr_confidence_avg,
         processed_at=document.processed_at,
@@ -153,7 +157,7 @@ def field_section(name: str, kind: str) -> str:
     return "personal" if name in PERSONAL_FIELDS else "document"
 
 
-def document_detail(document: Document, parser: DocumentParser) -> DocumentDetail:
+def document_detail(document: Document, parser: DocumentParser, reveal: bool = False) -> DocumentDetail:
     extra = document.extra_fields or {}
     values = document_values(document)
     confidence = document.field_confidence or {}
@@ -166,7 +170,7 @@ def document_detail(document: Document, parser: DocumentParser) -> DocumentDetai
             label=definition.label,
             kind=definition.kind,
             section=field_section(definition.name, definition.kind),
-            value=values.get(definition.name, ""),
+            value=shown(values.get(definition.name, ""), is_sensitive(definition.name, definition.kind) and not reveal),
             confidence=confidence.get(definition.name) if values.get(definition.name) else None,
             issues=issues.get(definition.name, []),
         )
@@ -181,10 +185,15 @@ def document_detail(document: Document, parser: DocumentParser) -> DocumentDetai
         fields=fields,
         pages=[image_out(image) for image in document.images if image.kind == ImageKind.PAGE],
         crops=[image_out(image) for image in document.images if image.kind != ImageKind.PAGE],
-        raw_text=document.raw_text or "",
+        raw_text=(document.raw_text or "") if reveal else "",
+        masked=not reveal,
         image_count=len(document.images),
         person_id=document.person_id,
     )
+
+
+def shown(value: str, hide: bool) -> str:
+    return (mask_number(value) or "") if hide else value
 
 
 def person_status(person: Person) -> str | None:
@@ -195,11 +204,11 @@ def person_status(person: Person) -> str | None:
     return DocumentStatus.REVIEWED
 
 
-def person_out(person: Person) -> PersonOut:
+def person_out(person: Person, reveal: bool = False) -> PersonOut:
     return PersonOut(
         id=person.id,
         full_name=person.full_name,
-        cpf=person.cpf,
+        cpf=person.cpf if reveal else mask_number(format_cpf(person.cpf) if person.cpf else None),
         birth_date=person.birth_date.strftime("%d/%m/%Y") if person.birth_date else None,
         status=person_status(person),
         doc_types=sorted({document.doc_type for document in person.documents}),
@@ -210,15 +219,24 @@ def person_out(person: Person) -> PersonOut:
     )
 
 
-def person_detail(person: Person) -> PersonDetail:
+def person_detail(person: Person, reveal: bool = False) -> PersonDetail:
     documents = sorted(person.documents, key=lambda document: document.processed_at, reverse=True)
     return PersonDetail(
-        **person_out(person).model_dump(),
+        **person_out(person, reveal).model_dump(),
+        masked=not reveal,
         mother_name=person.mother_name,
         father_name=person.father_name,
         birthplace=person.birthplace,
         document_list=[document_summary(document, get_parser(document.doc_type)) for document in documents],
-        other_data=[OtherDataOut(**vars(item)) for item in other_data(person)],
+        other_data=[
+            OtherDataOut(
+                label=item.label,
+                value=shown(item.value, item.sensitive and not reveal),
+                doc_type=item.doc_type,
+                document_id=item.document_id,
+            )
+            for item in other_data(person)
+        ],
     )
 
 

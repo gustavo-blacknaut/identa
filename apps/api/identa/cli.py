@@ -21,11 +21,12 @@ def read_password(arguments: argparse.Namespace) -> str:
 
 def run_create_user(arguments: argparse.Namespace) -> None:
     from identa.auth.accounts import create_user
-    from identa.auth.passwords import WeakPasswordError
+    from identa.auth.passwords import WeakPasswordError, configure_hashing
     from identa.db.session import build_engine, build_session_factory
     from identa.services.settings import load_runtime
 
     settings = get_settings()
+    configure_hashing(settings.argon2_time_cost, settings.argon2_memory_kib, settings.argon2_parallelism)
     password = read_password(arguments)
     factory = build_session_factory(build_engine(settings.database_url))
     with factory() as session:
@@ -61,6 +62,44 @@ def run_ocr_status() -> None:
     for key, label in LABELS.items():
         if status.get(key) is not None:
             print(f"{label}: {status[key]}")
+
+
+def run_reencrypt(arguments: argparse.Namespace) -> None:
+    from identa.db.session import build_engine, build_session_factory
+    from identa.security.fields import configure_fields
+    from identa.security.rotation import pending, reencrypt
+    from identa.storage.file_store import FileStore
+
+    settings = get_settings()
+    ring = settings.key_ring()
+    configure_fields(ring, settings.secret_key)
+    factory = build_session_factory(build_engine(settings.database_url))
+    if arguments.if_needed:
+        with factory() as session:
+            if not pending(session, ring):
+                print("Dados já cifrados com a chave atual.")
+                return
+    report = reencrypt(factory, FileStore(settings.storage_dir, ring), ring)
+    print(f"Pessoas: {report.people}. Documentos: {report.documents}. Arquivos regravados: {report.files}.")
+
+
+def run_prepare_database(arguments: argparse.Namespace) -> None:
+    from identa.db.roles import RoleError, grant_application_role
+    from identa.db.session import build_engine
+    from identa.db.transfer import upgrade
+
+    settings = get_settings()
+    upgrade(settings.database_url)
+    print("Migrações aplicadas.")
+    if arguments.app_user:
+        password = Path(arguments.app_password_file).read_text(encoding="utf-8").strip()
+        try:
+            grant_application_role(build_engine(settings.database_url), arguments.app_user, password)
+        except RoleError as error:
+            raise SystemExit(str(error)) from error
+        print(f"Permissões do usuário '{arguments.app_user}' atualizadas.")
+    arguments.if_needed = True
+    run_reencrypt(arguments)
 
 
 def run_check_config() -> None:
@@ -110,7 +149,16 @@ def main() -> None:
     transfer_parser = commands.add_parser("sqlite-to-postgres", help="Copia todos os dados de um SQLite para um PostgreSQL vazio")
     transfer_parser.add_argument("--source", required=True, help="sqlite:///caminho/identa.db")
     transfer_parser.add_argument("--target", required=True, help="postgresql://usuario:senha@host:5432/banco")
+    reencrypt_parser = commands.add_parser("reencrypt", help="Cifra de novo dados e imagens com a chave atual")
+    reencrypt_parser.add_argument("--if-needed", action="store_true", help="Só roda se houver dado em claro ou com chave antiga")
+    prepare_parser = commands.add_parser(
+        "prepare-database", help="Aplica as migrações e cria o usuário sem privilégios usado pela API"
+    )
+    prepare_parser.add_argument("--app-user", default="", help="Usuário do PostgreSQL usado pela API")
+    prepare_parser.add_argument("--app-password-file", default="", help="Arquivo com a senha desse usuário")
     arguments = parser.parse_args()
+    if arguments.command == "prepare-database" and arguments.app_user and not arguments.app_password_file:
+        parser.error("--app-password-file é obrigatório com --app-user")
     if arguments.command == "generate-key":
         print(generate_key())
     elif arguments.command == "create-user":
@@ -123,6 +171,10 @@ def main() -> None:
         run_check_config()
     elif arguments.command == "export-openapi":
         run_export_openapi(arguments)
+    elif arguments.command == "reencrypt":
+        run_reencrypt(arguments)
+    elif arguments.command == "prepare-database":
+        run_prepare_database(arguments)
     elif arguments.command == "sqlite-to-postgres":
         run_sqlite_to_postgres(arguments)
 

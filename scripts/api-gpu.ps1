@@ -21,8 +21,17 @@ $values = @{}
 foreach ($line in Get-Content (Join-Path $root ".env")) {
     if ($line -match '^\s*([A-Z0-9_]+)=(.*)$') { $values[$Matches[1]] = $Matches[2] }
 }
+$secretFiles = @{
+    "POSTGRES_PASSWORD" = "postgres_password"
+    "IDENTA_SECRET_KEY" = "secret_key"
+    "IDENTA_ENCRYPTION_KEY" = "encryption_key"
+}
+foreach ($entry in $secretFiles.GetEnumerator()) {
+    $path = Join-Path $root "secrets\$($entry.Value)"
+    if (-not $values[$entry.Key] -and (Test-Path $path)) { $values[$entry.Key] = (Get-Content -Raw $path).Trim() }
+}
 foreach ($required in @("POSTGRES_PASSWORD", "IDENTA_SECRET_KEY")) {
-    if (-not $values[$required]) { throw "$required não está definido no .env" }
+    if (-not $values[$required]) { throw "$required não está definido no .env nem em secrets\$($secretFiles[$required])" }
 }
 foreach ($entry in $values.GetEnumerator()) {
     if ($entry.Key.StartsWith("IDENTA_")) { Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value }
@@ -44,7 +53,9 @@ try {
     & $Python -m identa.cli download-models
     & $Python -m alembic upgrade head
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & $Python -m uvicorn identa.main:create_app --factory --host 127.0.0.1 --port $Port --proxy-headers --forwarded-allow-ips 127.0.0.1
+    & $Python -m identa.cli reencrypt --if-needed
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & $Python -m uvicorn identa.main:create_app --factory --host 127.0.0.1 --port $Port --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log
 }
 finally {
     Pop-Location

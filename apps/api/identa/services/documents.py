@@ -26,6 +26,7 @@ from identa.parsers.base import DocumentParser, ExtractedField, ExtractionResult
 from identa.parsers.classifier import classify
 from identa.parsers.common import repair_cpf_candidates
 from identa.parsers.registry import get_parser
+from identa.security.fields import blind_index
 from identa.storage.file_store import FileStore
 from identa.validators.cpf import format_cpf, is_valid_cpf, normalize_cpf, only_digits
 from identa.validators.dates import format_brazilian_date, parse_brazilian_date
@@ -385,7 +386,7 @@ def upsert_person(session: Session, document: Document, overwrite: bool = True) 
     cpf = normalize_cpf(document.cpf or "")
     person = document.person
     if cpf:
-        existing = session.scalar(select(Person).where(Person.cpf == cpf))
+        existing = session.scalar(select(Person).where(Person.cpf_index == blind_index(cpf)))
         if existing is not None:
             person = existing
     if person is None:

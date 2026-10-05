@@ -1302,6 +1302,16 @@
               "type": "integer",
               "title": "Document Id"
             }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
+            }
           }
         ],
         "requestBody": {
@@ -1385,6 +1395,16 @@
               "type": "integer",
               "title": "Document Id"
             }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
+            }
           }
         ],
         "responses": {
@@ -1426,6 +1446,16 @@
             "schema": {
               "type": "integer",
               "title": "Document Id"
+            }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
             }
           }
         ],
@@ -1823,6 +1853,16 @@
               "type": "integer",
               "title": "Person Id"
             }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
+            }
           }
         ],
         "responses": {
@@ -1862,6 +1902,16 @@
             "schema": {
               "type": "integer",
               "title": "Person Id"
+            }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
             }
           }
         ],
@@ -1948,6 +1998,46 @@
         }
       }
     },
+    "/api/people/{person_id}/export": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Export Person Data",
+        "operationId": "export_person_data_api_people__person_id__export_get",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/people/{person_id}/verify": {
       "post": {
         "tags": [
@@ -1963,6 +2053,16 @@
             "schema": {
               "type": "integer",
               "title": "Person Id"
+            }
+          },
+          {
+            "name": "reveal",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Reveal"
             }
           }
         ],
@@ -2837,6 +2937,10 @@
               }
             ],
             "title": "Person Id"
+          },
+          "masked": {
+            "type": "boolean",
+            "title": "Masked"
           }
         },
         "type": "object",
@@ -2858,7 +2962,8 @@
           "crops",
           "raw_text",
           "image_count",
-          "person_id"
+          "person_id",
+          "masked"
         ],
         "title": "DocumentDetail"
       },
@@ -3619,6 +3724,10 @@
             "format": "date-time",
             "title": "Updated At"
           },
+          "masked": {
+            "type": "boolean",
+            "title": "Masked"
+          },
           "mother_name": {
             "anyOf": [
               {
@@ -3679,6 +3788,7 @@
           "images",
           "created_at",
           "updated_at",
+          "masked",
           "mother_name",
           "father_name",
           "birthplace",

@@ -3,7 +3,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from identa.security.crypto import DecryptionError, FileCipher, is_encrypted
+from identa.security.crypto import DecryptionError, KeyRing, is_encrypted
 
 ALLOWED_CATEGORIES = ("originals", "processed", "thumbnails", "branding")
 
@@ -16,7 +16,7 @@ class StoredFile:
 
 
 class FileStore:
-    def __init__(self, root_dir: Path, cipher: FileCipher | None):
+    def __init__(self, root_dir: Path, cipher: KeyRing | None):
         self._root = root_dir.resolve()
         self._cipher = cipher
 
@@ -42,6 +42,19 @@ class FileStore:
         if self._cipher is None:
             raise DecryptionError("Arquivo criptografado, mas IDENTA_ENCRYPTION_KEY não está configurada")
         return self._cipher.decrypt(payload, relative_path.encode())
+
+    def rewrite(self, relative_path: str) -> bool:
+        target = self._resolve(relative_path)
+        if self._cipher is None or not target.exists():
+            return False
+        payload = target.read_bytes()
+        if is_encrypted(payload) and not self._cipher.needs_rotation(payload):
+            return False
+        content = self.load(relative_path)
+        temporary = target.with_suffix(".tmp")
+        temporary.write_bytes(self._cipher.encrypt(content, relative_path.encode()))
+        temporary.replace(target)
+        return True
 
     def delete(self, relative_path: str) -> bool:
         target = self._resolve(relative_path)

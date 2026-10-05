@@ -657,6 +657,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/{person_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Person Data */
+        get: operations["export_person_data_api_people__person_id__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/people/{person_id}/verify": {
         parameters: {
             query?: never;
@@ -976,6 +993,8 @@ export interface components {
             image_count: number;
             /** Person Id */
             person_id: number | null;
+            /** Masked */
+            masked: boolean;
         };
         /** DocumentSummary */
         DocumentSummary: {
@@ -1252,6 +1271,8 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+            /** Masked */
+            masked: boolean;
             /** Mother Name */
             mother_name: string | null;
             /** Father Name */
@@ -2535,7 +2556,9 @@ export interface operations {
     };
     show_document_api_documents__document_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -2566,7 +2589,9 @@ export interface operations {
     };
     save_document_api_documents__document_id__put: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -2630,7 +2655,9 @@ export interface operations {
     };
     reprocess_api_documents__document_id__reprocess_post: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -2761,7 +2788,9 @@ export interface operations {
     };
     show_person_api_people__person_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 person_id: number;
@@ -2792,7 +2821,9 @@ export interface operations {
     };
     edit_person_api_people__person_id__put: {
         parameters: {
-            query?: never;
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 person_id: number;
@@ -2886,9 +2917,42 @@ export interface operations {
             };
         };
     };
-    verify_api_people__person_id__verify_post: {
+    export_person_data_api_people__person_id__export_get: {
         parameters: {
             query?: never;
+            header?: never;
+            path: {
+                person_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_api_people__person_id__verify_post: {
+        parameters: {
+            query?: {
+                reveal?: boolean;
+            };
             header?: never;
             path: {
                 person_id: number;

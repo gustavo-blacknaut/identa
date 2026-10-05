@@ -1,13 +1,17 @@
+import os
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
-from identa.security.crypto import EncryptionKeyError, decode_key
+from identa.security.crypto import EncryptionKeyError, KeyRing, decode_key
 
 ENV_PREFIX = "IDENTA_"
+SECRET_FILE_SUFFIX = "_FILE"
 MINIMUM_SECRET_LENGTH = 32
 UPLOAD_FORMATS = ("jpeg", "png", "webp", "heic")
 INTERFACE_LANGUAGES = ("pt-BR", "en")
@@ -28,10 +32,13 @@ class OcrSettings(BaseSettings):
 
 
 class Settings(OcrSettings):
+    production: bool = False
     database_url: str = "sqlite:///./data/identa.db"
+    database_password: str = ""
     secret_key: str = ""
     encryption_enabled: bool = True
     encryption_key: str = ""
+    encryption_old_keys: str = ""
     storage_dir: Path = Path("./storage")
     public_url: str = ""
 
@@ -56,11 +63,15 @@ class Settings(OcrSettings):
     retention_interval_hours: int = Field(24, ge=1)
 
     password_min_length: int = Field(10, ge=8, le=128)
+    argon2_time_cost: int = Field(3, ge=2, le=20)
+    argon2_memory_kib: int = Field(65536, ge=19456, le=1048576)
+    argon2_parallelism: int = Field(4, ge=1, le=16)
     password_require_mixed: bool = True
     login_max_attempts: int = Field(5, ge=1, le=100)
     login_lock_minutes: int = Field(15, ge=1)
     access_minutes: int = Field(15, ge=1, le=1440)
     refresh_days: int = Field(30, ge=1, le=365)
+    session_idle_hours: int = Field(12, ge=1, le=720)
     invite_hours: int = Field(72, ge=1, le=720)
     reset_minutes: int = Field(60, ge=5, le=1440)
     verify_hours: int = Field(48, ge=1, le=720)
@@ -111,14 +122,41 @@ class Settings(OcrSettings):
         if self.encryption_enabled:
             try:
                 decode_key(self.encryption_key)
+                for key in self.previous_keys:
+                    decode_key(key)
             except EncryptionKeyError as error:
                 raise ValueError(
                     f"IDENTA_ENCRYPTION_KEY: {error}. Gere com python -m identa.cli generate-key"
                     " ou defina IDENTA_ENCRYPTION_ENABLED=false"
                 ) from error
+        if self.database_password and not self.is_sqlite:
+            url = make_url(self.database_url).set(password=self.database_password)
+            self.database_url = url.render_as_string(hide_password=False)
         if self.smtp_host and not self.smtp_from:
             raise ValueError("IDENTA_SMTP_FROM: obrigatório quando IDENTA_SMTP_HOST está definido")
+        if self.production:
+            self.refuse_insecure_production()
         return self
+
+    def refuse_insecure_production(self) -> None:
+        problems = []
+        if not self.secure_cookies:
+            problems.append("IDENTA_SECURE_COOKIES=true")
+        if not self.public_url.startswith("https://"):
+            problems.append("IDENTA_PUBLIC_URL com https://")
+        if not self.encryption_enabled:
+            problems.append("IDENTA_ENCRYPTION_ENABLED=true")
+        if self.smtp_host and self.smtp_security == "none":
+            problems.append("IDENTA_SMTP_SECURITY starttls ou ssl")
+        if problems:
+            raise ValueError("IDENTA_PRODUCTION: em produção é obrigatório " + ", ".join(problems))
+
+    @property
+    def previous_keys(self) -> list[str]:
+        return [key.strip() for key in self.encryption_old_keys.split(",") if key.strip()]
+
+    def key_ring(self) -> KeyRing | None:
+        return KeyRing(self.encryption_key, self.previous_keys) if self.encryption_enabled else None
 
     @property
     def smtp_configured(self) -> bool:
@@ -143,9 +181,25 @@ def describe_errors(error: ValidationError) -> str:
     return "\n".join(lines)
 
 
+def read_secret_files(environment: Mapping[str, str]) -> dict[str, str]:
+    values = {}
+    for name in Settings.model_fields:
+        variable = f"{ENV_PREFIX}{name.upper()}"
+        path = environment.get(variable + SECRET_FILE_SUFFIX)
+        if not path or environment.get(variable):
+            continue
+        try:
+            values[name] = Path(path).read_text(encoding="utf-8").strip()
+        except OSError as error:
+            raise ConfigurationError(
+                f"Configuração inválida:\n  - {variable}{SECRET_FILE_SUFFIX}: não foi possível ler {path} ({error.strerror})"
+            ) from None
+    return values
+
+
 def load_settings(**overrides) -> Settings:
     try:
-        return Settings(**overrides)
+        return Settings(**{**read_secret_files(os.environ), **overrides})
     except ValidationError as error:
         raise ConfigurationError(describe_errors(error)) from None
 

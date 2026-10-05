@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpDown, ChevronDown, CircleAlert, FileSearch, IdCard, RefreshCw, Save, Trash2, UserRound } from "lucide-react";
+import { ArrowUpDown, ChevronDown, CircleAlert, Eye, FileSearch, IdCard, RefreshCw, Save, Trash2, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
@@ -31,7 +31,12 @@ export default function DocumentPage() {
   const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const detail = useQuery({ queryKey: ["document", documentId], queryFn: () => api.document(documentId), enabled: Number.isFinite(documentId) });
+  const [reveal, setReveal] = useState(false);
+  const detail = useQuery({
+    queryKey: ["document", documentId, reveal],
+    queryFn: () => api.document(documentId, reveal),
+    enabled: Number.isFinite(documentId),
+  });
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [reprocessing, setReprocessing] = useState(false);
@@ -67,7 +72,7 @@ export default function DocumentPage() {
   if (!document) return <div className="spinner spinner-page" role="status" />;
 
   const apply = (next: DocumentDetail) => {
-    queryClient.setQueryData(["document", documentId], next);
+    queryClient.setQueryData(["document", documentId, reveal], next);
     setValues(valuesOf(next));
     void queryClient.invalidateQueries({ queryKey: ["documents"] });
     void queryClient.invalidateQueries({ queryKey: ["people"] });
@@ -77,7 +82,8 @@ export default function DocumentPage() {
     event.preventDefault();
     setSaving(true);
     try {
-      apply(await api.saveDocument(document.id, values));
+      const changed = Object.fromEntries(document.fields.filter((field) => (values[field.name] ?? "") !== field.value).map((field) => [field.name, values[field.name] ?? ""]));
+      apply(await api.saveDocument(document.id, changed, reveal));
       toast(t.review.saved);
     } catch (caught) {
       toast(caught instanceof Error ? caught.message : t.common.error, "error");
@@ -89,7 +95,7 @@ export default function DocumentPage() {
   const reprocess = async () => {
     setReprocessing(true);
     try {
-      apply(await api.reprocess(document.id));
+      apply(await api.reprocess(document.id, reveal));
       toast(t.review.reprocessed);
     } catch (caught) {
       toast(caught instanceof Error ? caught.message : t.common.error, "error");
@@ -145,6 +151,15 @@ export default function DocumentPage() {
         </div>
       )}
       {!editable && <div className="alert alert-warning">{t.review.readOnly}</div>}
+      {document.masked && can("data.reveal") && (
+        <div className={styles.revealBar}>
+          <span className="muted">{t.review.maskedNote}</span>
+          <button className="button button-secondary" type="button" onClick={() => setReveal(true)}>
+            <Eye size={16} strokeWidth={1.75} />
+            {t.review.reveal}
+          </button>
+        </div>
+      )}
 
       <div className={styles.review}>
         <aside className={styles.images} aria-label={t.review.images}>
@@ -259,7 +274,7 @@ export default function DocumentPage() {
               )}
               <details>
                 <summary className={`muted ${styles.rawSummary}`}>{t.review.rawText}</summary>
-                <pre className={styles.raw}>{document.raw_text}</pre>
+                <pre className={styles.raw}>{document.masked ? t.review.rawHidden : document.raw_text}</pre>
               </details>
             </div>
           </section>
@@ -285,6 +300,7 @@ type FieldInputProps = { field: Field; value: string; onChange: (name: string, v
 function FieldInput({ field, value, onChange }: FieldInputProps) {
   const t = useT();
   const untouched = value === field.value;
+  const masked = field.value.includes("*");
   const level = value && untouched ? confidenceLevel(field.confidence) : "unknown";
   const levelClass = level === "high" ? styles.high : level === "medium" ? styles.medium : level === "low" ? styles.low : "";
   const classes = [
@@ -306,12 +322,21 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         {value && !untouched && <span className={styles.confidence}>{t.review.edited}</span>}
       </label>
       {field.kind === "multiline" ? (
-        <textarea id={inputId} rows={3} className="mono" value={value} maxLength={2000} onChange={(event) => onChange(field.name, event.target.value)} />
+        <textarea
+          id={inputId}
+          rows={3}
+          className="mono"
+          value={value}
+          maxLength={2000}
+          readOnly={masked}
+          onChange={(event) => onChange(field.name, event.target.value)}
+        />
       ) : (
         <input
           id={inputId}
           value={value}
           maxLength={200}
+          readOnly={masked}
           onChange={(event) => onChange(field.name, event.target.value)}
           inputMode={field.kind === "date" || field.kind === "cpf" ? "numeric" : undefined}
           placeholder={field.kind === "date" ? "dd/mm/aaaa" : field.kind === "cpf" ? "000.000.000-00" : undefined}

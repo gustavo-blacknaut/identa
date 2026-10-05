@@ -9,6 +9,7 @@ class Permission(StrEnum):
     DOCUMENTS_REVIEW = "documents.review"
     DOCUMENTS_DELETE = "documents.delete"
     IMAGES_ORIGINAL = "images.original"
+    DATA_REVEAL = "data.reveal"
     PEOPLE_EDIT = "people.edit"
     PEOPLE_DELETE = "people.delete"
     SCAN_LINKS = "scan_links.manage"
@@ -27,6 +28,7 @@ ROLE_DEFAULTS: dict[str, frozenset[str]] = {
             Permission.DOCUMENTS_REVIEW,
             Permission.DOCUMENTS_DELETE,
             Permission.IMAGES_ORIGINAL,
+            Permission.DATA_REVEAL,
             Permission.PEOPLE_EDIT,
             Permission.SCAN_LINKS,
         }
