@@ -44,6 +44,7 @@ Para desenvolvimento, `docker compose --profile dev up -d mailpit` sobe o [Mailp
 | `IDENTA_OCR_LANGUAGES` | `por` | não | não | Idiomas do Tesseract. O RapidOCR usa o modelo latino PP-OCRv5, que cobre português. |
 | `IDENTA_OCR_MODEL_DIR` | `./models` | não | não | Onde ficam os modelos ONNX (`python -m identa.cli download-models`). |
 | `IDENTA_OCR_WARMUP` | `true` | não | não | Prepara o motor ao subir, para a primeira leitura não esperar. |
+| `IDENTA_OCR_PASSES` | `3` | não | sim | Quantas vezes a imagem é lida, cada vez com um efeito (contraste e nitidez, preto e branco, escurecimento). As leituras extras só rodam se algum campo vier vazio, inválido ou com confiança abaixo de 90%; cada campo fica com o valor de maior confiança, e o CPF só é trocado por um que passe no dígito verificador. |
 
 ## Envio, imagens e retenção
 

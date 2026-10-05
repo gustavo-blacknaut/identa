@@ -36,6 +36,7 @@ OPTIONS = (
     Option("default_language", "choice", choices=INTERFACE_LANGUAGES),
     Option("timezone", "timezone"),
     Option("ocr_device", "choice", choices=OCR_DEVICES),
+    Option("ocr_passes", "int", 1, 4),
     Option("upload_max_mb", "int", 1, 100),
     Option("upload_formats", "formats"),
     Option("image_quality", "int", 40, 100),

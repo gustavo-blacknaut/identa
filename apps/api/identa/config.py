@@ -43,6 +43,7 @@ class Settings(OcrSettings):
     smtp_from: str = ""
 
     ocr_warmup: bool = True
+    ocr_passes: int = Field(3, ge=1, le=4)
     background_jobs: bool = True
 
     upload_max_mb: int = Field(15, ge=1, le=100)

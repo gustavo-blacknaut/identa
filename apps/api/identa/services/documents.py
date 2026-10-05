@@ -18,10 +18,11 @@ from identa.imaging.preprocess import (
     load_image,
     prepare_image,
 )
+from identa.imaging.variants import enhancement_variants
 from identa.ocr.base import OcrEngine, TextBox
 from identa.ocr.orientation import read_with_best_orientation
 from identa.ocr.timing import timed_image
-from identa.parsers.base import ExtractedField, side_of, strip_accents
+from identa.parsers.base import DocumentParser, ExtractedField, ExtractionResult, side_of, strip_accents
 from identa.parsers.classifier import classify
 from identa.parsers.common import repair_cpf_candidates
 from identa.parsers.registry import get_parser
@@ -38,6 +39,7 @@ PERSON_COLUMNS = ("full_name", "birth_date", "mother_name", "father_name", "birt
 CPF_CROP_PADDING = 0.6
 CPF_CROP_SCALE = 2.5
 CORRECTED_CONFIDENCE_FACTOR = 0.85
+CONFIDENT_FIELD = 0.9
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,7 @@ class ImagePolicy:
     quality: int = DEFAULT_QUALITY
     compress_originals: bool = False
     original_max_side: int = 3000
+    ocr_passes: int = 1
 
 
 DEFAULT_POLICY = ImagePolicy()
@@ -193,12 +196,56 @@ def verify_cpf(engine: OcrEngine, readings: list[SideReading], fields: dict[str,
     return "cpf_corrected"
 
 
-def apply_extraction(document: Document, engine: OcrEngine, readings: list[SideReading], detected: bool = False) -> None:
-    front = [box for reading in readings if reading.side == ImageSide.FRONT for box in reading.boxes]
-    back = [box for reading in readings if reading.side == ImageSide.BACK for box in reading.boxes]
+def boxes_by_side(readings: list[SideReading], boxes: list[list[TextBox]]) -> tuple[list[TextBox], list[TextBox]]:
+    pairs = list(zip(readings, boxes, strict=True))
+    front = [box for reading, items in pairs if reading.side == ImageSide.FRONT for box in items]
+    back = [box for reading, items in pairs if reading.side == ImageSide.BACK for box in items]
+    return front, back
+
+
+def needs_more_passes(result: ExtractionResult) -> bool:
+    if result.issues or not result.fields:
+        return True
+    return any((field.confidence or 0) < CONFIDENT_FIELD for field in result.fields.values())
+
+
+def better_field(name: str, current: ExtractedField | None, candidate: ExtractedField) -> bool:
+    if name == "cpf":
+        if not is_valid_cpf(candidate.value):
+            return False
+        if current is None or not is_valid_cpf(current.value):
+            return True
+    if current is None:
+        return True
+    return (candidate.confidence or 0) > (current.confidence or 0)
+
+
+def read_again(
+    engine: OcrEngine, parser: DocumentParser, readings: list[SideReading], result: ExtractionResult, passes: int
+) -> None:
+    extra = passes - 1
+    if extra <= 0 or not needs_more_passes(result):
+        return
+    variants = [enhancement_variants(reading.image, extra) for reading in readings]
+    for index in range(extra):
+        boxes = [engine.read(images[index]) for images in variants]
+        candidate = parser.parse(*boxes_by_side(readings, boxes))
+        for name, field in candidate.fields.items():
+            if better_field(name, result.fields.get(name), field):
+                result.fields[name] = field
+        result.issues = parser.validate(result.values())
+        if not needs_more_passes(result):
+            return
+
+
+def apply_extraction(
+    document: Document, engine: OcrEngine, readings: list[SideReading], detected: bool = False, passes: int = 1
+) -> None:
+    front, back = boxes_by_side(readings, [reading.boxes for reading in readings])
     ordered = sorted(readings, key=lambda reading: reading.side != ImageSide.FRONT)
     parser = get_parser(document.doc_type)
     result = parser.parse(front, back)
+    read_again(engine, parser, readings, result, passes)
     cpf_status = verify_cpf(engine, ordered, result.fields)
     if cpf_status == "cpf_corrected":
         result.issues = parser.validate(result.values())
@@ -271,7 +318,7 @@ def process_document(
     for uploaded, reading in zip(sides, readings, strict=True):
         store_page(store, document, uploaded, reading, policy)
     save_crops(store, document, readings, policy)
-    apply_extraction(document, engine, readings, detected)
+    apply_extraction(document, engine, readings, detected, policy.ocr_passes)
     link_person_by_cpf(session, document)
     session.add(document)
     session.flush()
@@ -292,7 +339,6 @@ def reprocess_document(
     engine: OcrEngine,
     document: Document,
     user_id: int | None = None,
-    doc_type: str | None = None,
     policy: ImagePolicy = DEFAULT_POLICY,
 ) -> Document:
     readings: list[SideReading] = []
@@ -309,9 +355,9 @@ def reprocess_document(
         image.side = reading.side
         image.processed_path = store.save("processed", encode_processed(reading.image, policy.quality)).relative_path
         image.thumbnail_path = store.save("thumbnails", encode_thumbnail(reading.image)).relative_path
-    document.doc_type, detected = resolve_type(doc_type, readings)
+    document.doc_type, detected = resolve_type(None, readings)
     save_crops(store, document, readings, policy)
-    apply_extraction(document, engine, readings, detected)
+    apply_extraction(document, engine, readings, detected, policy.ocr_passes)
     link_person_by_cpf(session, document)
     session.add(AuditLog(user_id=user_id, action="reprocess", entity="document", entity_id=document.id))
     session.commit()
