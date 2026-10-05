@@ -1,13 +1,17 @@
+import os
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 from identa.security.crypto import EncryptionKeyError, KeyRing, decode_key
 
 ENV_PREFIX = "IDENTA_"
+SECRET_FILE_SUFFIX = "_FILE"
 MINIMUM_SECRET_LENGTH = 32
 UPLOAD_FORMATS = ("jpeg", "png", "webp", "heic")
 INTERFACE_LANGUAGES = ("pt-BR", "en")
@@ -29,6 +33,7 @@ class OcrSettings(BaseSettings):
 
 class Settings(OcrSettings):
     database_url: str = "sqlite:///./data/identa.db"
+    database_password: str = ""
     secret_key: str = ""
     encryption_enabled: bool = True
     encryption_key: str = ""
@@ -120,6 +125,9 @@ class Settings(OcrSettings):
                     f"IDENTA_ENCRYPTION_KEY: {error}. Gere com python -m identa.cli generate-key"
                     " ou defina IDENTA_ENCRYPTION_ENABLED=false"
                 ) from error
+        if self.database_password and not self.is_sqlite:
+            url = make_url(self.database_url).set(password=self.database_password)
+            self.database_url = url.render_as_string(hide_password=False)
         if self.smtp_host and not self.smtp_from:
             raise ValueError("IDENTA_SMTP_FROM: obrigatório quando IDENTA_SMTP_HOST está definido")
         return self
@@ -154,9 +162,25 @@ def describe_errors(error: ValidationError) -> str:
     return "\n".join(lines)
 
 
+def read_secret_files(environment: Mapping[str, str]) -> dict[str, str]:
+    values = {}
+    for name in Settings.model_fields:
+        variable = f"{ENV_PREFIX}{name.upper()}"
+        path = environment.get(variable + SECRET_FILE_SUFFIX)
+        if not path or environment.get(variable):
+            continue
+        try:
+            values[name] = Path(path).read_text(encoding="utf-8").strip()
+        except OSError as error:
+            raise ConfigurationError(
+                f"Configuração inválida:\n  - {variable}{SECRET_FILE_SUFFIX}: não foi possível ler {path} ({error.strerror})"
+            ) from None
+    return values
+
+
 def load_settings(**overrides) -> Settings:
     try:
-        return Settings(**overrides)
+        return Settings(**{**read_secret_files(os.environ), **overrides})
     except ValidationError as error:
         raise ConfigurationError(describe_errors(error)) from None
 
