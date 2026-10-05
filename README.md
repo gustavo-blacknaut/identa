@@ -67,6 +67,20 @@ E-mail em desenvolvimento: `docker compose --profile dev up -d mailpit` e, no `.
 
 Todas as variáveis estão em [.env.example](.env.example) e [docs/configuracao.md](docs/configuracao.md).
 
+## GPU com Docker no Windows
+
+O Docker Desktop não repassa GPUs AMD e Intel para containers, então no Docker o OCR roda na CPU. Para usar a placa de vídeo sem abrir mão do Docker, deixe o PostgreSQL e a interface no Docker e rode só a API no Windows:
+
+```powershell
+docker compose stop api
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build postgres web
+.\scripts\api-gpu.ps1
+```
+
+O script lê o `.env`, aponta a API para o PostgreSQL publicado em `127.0.0.1:5432` e para a pasta `storage`, que é a mesma montada no container, e sobe a API em `127.0.0.1:8000` com `IDENTA_OCR_DEVICE=auto`. Ele usa o ambiente `.venv` da instalação nativa abaixo.
+
+Para voltar ao modo só Docker: `docker compose up -d --build`. O `--build` é necessário porque o endereço da API é gravado no build da interface.
+
 ## Rodar no Windows sem Docker
 
 É o caminho para usar a GPU: o Docker Desktop não repassa GPUs AMD e Intel para containers.

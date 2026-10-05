@@ -31,7 +31,7 @@ services:
     environment:
       <<: *api-env
     volumes:
-      - storage:/data/storage
+      - ${IDENTA_STORAGE_PATH:-./storage}:/data/storage
     networks: [internal]
     depends_on:
       postgres:
@@ -106,4 +106,3 @@ networks:
 
 volumes:
   postgres-data: {}
-  storage: {}

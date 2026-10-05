@@ -1,0 +1,17 @@
+services:
+  api:
+    profiles: ["api-no-docker"]
+
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+
+  web:
+    build:
+      args:
+        IDENTA_API_URL: http://host.docker.internal:8000
+    environment:
+      IDENTA_API_URL: http://host.docker.internal:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on: !reset {}
