@@ -2,6 +2,7 @@ import logging
 import threading
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -37,6 +38,14 @@ def configure_logging() -> None:
         logger.setLevel(logging.INFO)
 
 
+def validation_problems(error: RequestValidationError) -> list[dict]:
+    return [{"loc": list(item["loc"]), "msg": item["msg"], "type": item["type"]} for item in error.errors()]
+
+
+async def reject_invalid_request(_request: Request, error: RequestValidationError) -> JSONResponse:
+    return JSONResponse({"detail": validation_problems(error)}, status_code=422)
+
+
 def warm_up_ocr(application: FastAPI) -> None:
     settings = application.state.settings
     try:
@@ -58,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.store = FileStore(settings.storage_dir, ring)
     application.state.login_throttle = LoginThrottle(max_attempts=IP_ATTEMPTS)
     application.state.mailer = Mailer(settings)
+    application.add_exception_handler(RequestValidationError, reject_invalid_request)
     application.include_router(setup_router)
     application.include_router(auth_router)
     application.include_router(users_router)

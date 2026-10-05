@@ -105,3 +105,12 @@ def test_missing_secret_file_names_the_variable(monkeypatch, tmp_path):
     with pytest.raises(ConfigurationError) as error:
         load_settings(_env_file=None)
     assert "IDENTA_SECRET_KEY_FILE" in str(error.value)
+
+
+def test_validation_errors_do_not_echo_the_submitted_values(client):
+    secret = "senha-super-secreta-123"
+    response = client.post("/api/auth/login", json={"email": 12345, "password": secret, "extra": secret})
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert "12345" not in response.text
+    assert response.json()["detail"][0]["loc"] == ["body", "email"]
