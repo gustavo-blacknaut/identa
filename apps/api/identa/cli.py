@@ -82,6 +82,25 @@ def run_reencrypt(arguments: argparse.Namespace) -> None:
     print(f"Pessoas: {report.people}. Documentos: {report.documents}. Arquivos regravados: {report.files}.")
 
 
+def run_prepare_database(arguments: argparse.Namespace) -> None:
+    from identa.db.roles import RoleError, grant_application_role
+    from identa.db.session import build_engine
+    from identa.db.transfer import upgrade
+
+    settings = get_settings()
+    upgrade(settings.database_url)
+    print("Migrações aplicadas.")
+    if arguments.app_user:
+        password = Path(arguments.app_password_file).read_text(encoding="utf-8").strip()
+        try:
+            grant_application_role(build_engine(settings.database_url), arguments.app_user, password)
+        except RoleError as error:
+            raise SystemExit(str(error)) from error
+        print(f"Permissões do usuário '{arguments.app_user}' atualizadas.")
+    arguments.if_needed = True
+    run_reencrypt(arguments)
+
+
 def run_check_config() -> None:
     settings = get_settings()
     database = "SQLite" if settings.is_sqlite else "PostgreSQL"
@@ -131,7 +150,14 @@ def main() -> None:
     transfer_parser.add_argument("--target", required=True, help="postgresql://usuario:senha@host:5432/banco")
     reencrypt_parser = commands.add_parser("reencrypt", help="Cifra de novo dados e imagens com a chave atual")
     reencrypt_parser.add_argument("--if-needed", action="store_true", help="Só roda se houver dado em claro ou com chave antiga")
+    prepare_parser = commands.add_parser(
+        "prepare-database", help="Aplica as migrações e cria o usuário sem privilégios usado pela API"
+    )
+    prepare_parser.add_argument("--app-user", default="", help="Usuário do PostgreSQL usado pela API")
+    prepare_parser.add_argument("--app-password-file", default="", help="Arquivo com a senha desse usuário")
     arguments = parser.parse_args()
+    if arguments.command == "prepare-database" and arguments.app_user and not arguments.app_password_file:
+        parser.error("--app-password-file é obrigatório com --app-user")
     if arguments.command == "generate-key":
         print(generate_key())
     elif arguments.command == "create-user":
@@ -146,6 +172,8 @@ def main() -> None:
         run_export_openapi(arguments)
     elif arguments.command == "reencrypt":
         run_reencrypt(arguments)
+    elif arguments.command == "prepare-database":
+        run_prepare_database(arguments)
     elif arguments.command == "sqlite-to-postgres":
         run_sqlite_to_postgres(arguments)
 

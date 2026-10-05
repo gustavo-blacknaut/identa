@@ -9,7 +9,14 @@ PARENTS = Path(__file__).resolve().parents
 ROOT = PARENTS[3] if len(PARENTS) > 3 else PARENTS[-1]
 EXAMPLE = ROOT / ".env.example"
 GUIDE = ROOT / "docs" / "configuracao.md"
-COMPOSE_ONLY = {"IDENTA_BIND", "IDENTA_PORT", "IDENTA_API_URL", "IDENTA_STORAGE_PATH"}
+COMPOSE_ONLY = {
+    "IDENTA_BIND",
+    "IDENTA_PORT",
+    "IDENTA_API_URL",
+    "IDENTA_STORAGE_PATH",
+    "IDENTA_API_MEMORY_LIMIT",
+    "IDENTA_WEB_MEMORY_LIMIT",
+}
 
 
 def documented(path: Path) -> set[str]:

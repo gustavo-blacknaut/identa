@@ -21,8 +21,17 @@ $values = @{}
 foreach ($line in Get-Content (Join-Path $root ".env")) {
     if ($line -match '^\s*([A-Z0-9_]+)=(.*)$') { $values[$Matches[1]] = $Matches[2] }
 }
+$secretFiles = @{
+    "POSTGRES_PASSWORD" = "postgres_password"
+    "IDENTA_SECRET_KEY" = "secret_key"
+    "IDENTA_ENCRYPTION_KEY" = "encryption_key"
+}
+foreach ($entry in $secretFiles.GetEnumerator()) {
+    $path = Join-Path $root "secrets\$($entry.Value)"
+    if (-not $values[$entry.Key] -and (Test-Path $path)) { $values[$entry.Key] = (Get-Content -Raw $path).Trim() }
+}
 foreach ($required in @("POSTGRES_PASSWORD", "IDENTA_SECRET_KEY")) {
-    if (-not $values[$required]) { throw "$required não está definido no .env" }
+    if (-not $values[$required]) { throw "$required não está definido no .env nem em secrets\$($secretFiles[$required])" }
 }
 foreach ($entry in $values.GetEnumerator()) {
     if ($entry.Key.StartsWith("IDENTA_")) { Set-Item -Path "Env:$($entry.Key)" -Value $entry.Value }

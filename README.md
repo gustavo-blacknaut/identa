@@ -47,11 +47,15 @@ cd identa
 cp .env.example .env
 ```
 
-No `.env`, defina primeiro `POSTGRES_PASSWORD` com uma senha longa; o Compose recusa qualquer comando sem ela. Depois gere as duas chaves, rodando o comando duas vezes, e cole uma em `IDENTA_SECRET_KEY` e outra em `IDENTA_ENCRYPTION_KEY`:
+Gere as senhas do banco e as chaves. Elas ficam em arquivos na pasta `secrets/`, fora do `.env` e fora do Git:
 
 ```bash
-docker compose run --rm --no-deps api python -m identa.cli generate-key
+sh scripts/gerar-segredos.sh
 ```
+
+No Windows: `powershell -ExecutionPolicy Bypass -File scripts\gerar-segredos.ps1`. Guarde uma cópia de `secrets/encryption_key` fora do servidor: sem ela as imagens e os dados cifrados não podem ser lidos.
+
+Quem já tinha uma instalação com as chaves no `.env` roda o mesmo script: ele copia os valores existentes para `secrets/`. Depois apague `POSTGRES_PASSWORD`, `IDENTA_SECRET_KEY` e `IDENTA_ENCRYPTION_KEY` do `.env`.
 
 Depois:
 
@@ -133,18 +137,18 @@ Suporte a GPU: AMD, Intel e NVIDIA via DirectML no Windows (só a AMD acima foi 
 
 ## Backup e restauração
 
-O que precisa de backup: o banco, o volume `storage` (imagens) e a `IDENTA_ENCRYPTION_KEY`. Sem a chave as imagens do backup são ilegíveis.
+O que precisa de backup: o banco, o volume `storage` (imagens) e a pasta `secrets/`. Sem `secrets/encryption_key` as imagens do backup são ilegíveis.
 
 ```bash
 docker compose exec -T postgres pg_dump -U identa -Fc identa > identa.dump
 docker run --rm -v identa_storage:/data -v "$PWD":/backup alpine:3.24 tar czf /backup/storage.tar.gz -C /data .
 ```
 
-Restaurar num servidor novo, com o mesmo `.env`:
+Restaurar num servidor novo, com o mesmo `.env` e a mesma pasta `secrets/`:
 
 ```bash
 docker compose up -d postgres
-docker compose exec -T postgres pg_restore -U identa -d identa --clean --if-exists < identa.dump
+docker compose exec -T postgres pg_restore -U identa -d identa --clean --if-exists --no-owner --no-privileges < identa.dump
 docker run --rm -v identa_storage:/data -v "$PWD":/backup alpine:3.24 sh -c "tar xzf /backup/storage.tar.gz -C /data && chown -R 10001 /data"
 docker compose up -d
 ```

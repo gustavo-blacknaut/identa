@@ -1,4 +1,7 @@
 services:
+  migrate:
+    profiles: ["api-no-docker"]
+
   api:
     profiles: ["api-no-docker"]
 
