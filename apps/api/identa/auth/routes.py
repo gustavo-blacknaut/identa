@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -50,7 +50,7 @@ from identa.auth.tokens import (
 )
 from identa.db.models import RefreshToken, TokenPurpose, User, UserToken
 from identa.mail.messages import compose
-from identa.mail.sender import MailError
+from identa.mail.sender import MailError, OutgoingMail
 from identa.services.audit import record
 from identa.services.settings import RuntimeSettings
 from identa.web.deps import RuntimeDep, SessionDep, UserDep, require
@@ -101,18 +101,32 @@ def format_moment(moment: datetime, runtime: RuntimeSettings) -> str:
     return aware.astimezone(ZoneInfo(runtime.timezone)).strftime("%d/%m/%Y %H:%M")
 
 
-def deliver(
+def outgoing(
     request: Request, runtime: RuntimeSettings, kind: str, to: str, link: str, expires_at: datetime, **values: str
-) -> bool:
-    mailer = request.app.state.mailer
-    if not mailer.configured:
-        return False
-    mail = compose(
+) -> OutgoingMail | None:
+    if not request.app.state.mailer.configured:
+        return None
+    return compose(
         kind, runtime.default_language, to, link, instance=runtime.instance_name,
         expires=format_moment(expires_at, runtime), **values,
     )
+
+
+def send_quietly(mailer, mail: OutgoingMail, sender: str) -> None:
     try:
-        mailer.send(mail, runtime.instance_name)
+        mailer.send(mail, sender)
+    except MailError:
+        return
+
+
+def deliver(
+    request: Request, runtime: RuntimeSettings, kind: str, to: str, link: str, expires_at: datetime, **values: str
+) -> bool:
+    mail = outgoing(request, runtime, kind, to, link, expires_at, **values)
+    if mail is None:
+        return False
+    try:
+        request.app.state.mailer.send(mail, runtime.instance_name)
     except MailError:
         return False
     return True
@@ -259,7 +273,9 @@ def logout(request: Request, session: SessionDep) -> Response:
 
 
 @router.post("/password/forgot", status_code=202)
-def forgot_password(request: Request, payload: ForgotIn, session: SessionDep, runtime: RuntimeDep) -> dict[str, str]:
+def forgot_password(
+    request: Request, payload: ForgotIn, session: SessionDep, runtime: RuntimeDep, background: BackgroundTasks
+) -> dict[str, str]:
     key = guard_ip(request, "forgot")
     request.app.state.login_throttle.record_failure(key)
     settings = request.app.state.settings
@@ -267,7 +283,9 @@ def forgot_password(request: Request, payload: ForgotIn, session: SessionDep, ru
     if issued is not None:
         user, raw = issued
         token = session.scalar(select(UserToken).where(UserToken.token_hash == hash_token(raw)))
-        deliver(request, runtime, "reset", user.email, f"{public_base(request)}{RESET_PATH}{raw}", token.expires_at)
+        mail = outgoing(request, runtime, "reset", user.email, f"{public_base(request)}{RESET_PATH}{raw}", token.expires_at)
+        if mail is not None:
+            background.add_task(send_quietly, request.app.state.mailer, mail, runtime.instance_name)
     session.commit()
     return {"detail": "Se o e-mail estiver cadastrado, enviaremos um link para redefinir a senha."}
 
