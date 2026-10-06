@@ -13,6 +13,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     IDENTA_OCR_MODEL_DIR=/opt/identa/models
 
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends libgomp1 libglib2.0-0 libgl1 fonts-dejavu-core tesseract-ocr tesseract-ocr-por \
     && rm -rf /var/lib/apt/lists/*
 
